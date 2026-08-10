@@ -25,16 +25,19 @@ end
 --- Weight of this specific item instance. Flat base weight unless the item
 --- type depletes (step_key set), in which case it scales by how much of
 --- data[step_key] remains versus the base item's starting capacity.
---- Assumes self.baseItem is already set (via :loadSync('baseItemRelation')
---- or set directly, as the pure-logic tests in tests/item_spec.lua do).
---- this method does not lazily load the relation itself, callers control
---- when that query happens.
+--- Assumes self.baseItem has already been set directly (assign it yourself
+--- after loading/constructing the BaseItem; :loadSync('baseItemRelation')
+--- populates self.relations.baseItemRelation, not self.baseItem, so it does
+--- not satisfy this requirement). This method does not lazily load the
+--- relation itself, callers control when that query happens.
 --- @return number
 function Item:getWeight()
     local baseItem = self.baseItem
     local key = baseItem.attributes.step_key
-    if key and baseItem.attributes.step and self.attributes.data[key] and baseItem.attributes.data[key] then
-        return baseItem.attributes.weight * (self.attributes.data[key] / baseItem.attributes.data[key])
+    local itemData = self.attributes.data or {}
+    local baseData = baseItem.attributes.data or {}
+    if key and baseItem.attributes.step and itemData[key] and baseData[key] then
+        return baseItem.attributes.weight * (itemData[key] / baseData[key])
     end
     return baseItem.attributes.weight
 end

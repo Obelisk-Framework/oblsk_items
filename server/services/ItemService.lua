@@ -3,6 +3,15 @@
 --- item:consume_step action delegates to.
 ItemService = {}
 
+--- True only for the DB's various truthy encodings of a boolean flag. A
+--- TINYINT(1) column decodes to 0 or 1, and 0 is truthy in Lua, so callers
+--- must not check the raw attribute directly.
+--- @param v any
+--- @return boolean
+local function isTruthyFlag(v)
+    return v == true or v == 1 or v == '1'
+end
+
 --- Subtract baseItem.step from item.data[baseItem.step_key], clamped to >= 0,
 --- and persist the item. No-op if the item type has no step_key configured.
 --- Kept separate from the item:consume_step action registration below so
@@ -13,6 +22,7 @@ function ItemService.consumeStep(item, baseItem)
     local key = baseItem.attributes.step_key
     if not (key and baseItem.attributes.step) then return end
 
+    item.attributes.data = item.attributes.data or {}
     local current = item.attributes.data[key] or 0
     item.attributes.data[key] = math.max(0, current - baseItem.attributes.step)
     item:saveSync()
@@ -26,7 +36,9 @@ end
 --- @param item table Item instance
 function ItemService.use(source, item)
     local baseItem = BaseItem:findSync(item.attributes.base_item_id)
-    if not baseItem or not baseItem.attributes.is_useable then return end
+    if not baseItem or not isTruthyFlag(baseItem.attributes.is_useable) then return end
+
+    item.baseItem = baseItem
 
     for _, entry in ipairs(baseItem.attributes.actions or {}) do
         local actionId = ActionService.resolveDbId(entry.action_id)

@@ -4,24 +4,13 @@
 --- This module depends on core's ORM (BaseModel) being loadable stand-alone,
 --- the same way core/tests/orm_spec.lua already loads it.
 ---
---- CORE_ROOT below is a TEMPORARY absolute path, not the relative
---- '../../..' walk-up the brief originally called for. That relative
---- calculation is only literally true when oblsk_items lives at
---- <core-root>/modules/oblsk_items/ AND <core-root> is the checkout that
---- actually has core's ORM loadable stand-alone. Right now those are two
---- different checkouts: this repo physically lives under
---- /home/andi/Projects/obelisk-framework/core/modules/oblsk_items (the
---- plain core checkout, per the fold-modules-plugins glob requirement),
---- but the BaseModel/ActionService fixes from Tasks 1-3 only exist in the
---- core WORKTREE at .worktrees/item-module-core, not yet merged back to
---- core's main checkout. So a relative walk-up from this file would resolve
---- to the plain checkout and fail to load a BaseModel with those fixes.
---- Point directly at the worktree for now; once Tasks 1-3 land on core's
---- real master (and this module gets its own CI/dev harness), switch this
---- back to a relative path or an environment variable.
-local CORE_ROOT = '/home/andi/Projects/obelisk-framework/core/.worktrees/item-module-core'
-
+--- CORE_ROOT is a relative walk-up from this file to the core repo root.
+--- The depth is architecturally fixed, not a guess: oblsk_items must live at
+--- <core-root>/modules/oblsk_items/ for FXServer to load it as part of core
+--- at all, so this file is always three levels below the core root
+--- (tests/ -> oblsk_items/ -> modules/ -> core-root).
 local scriptDir = arg[0]:match('(.*/)') or './'
+local CORE_ROOT = scriptDir .. '../../..'
 
 dofile(CORE_ROOT .. '/tests/support/fivem_stubs.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/Dialects/Init.lua')
