@@ -1,0 +1,6 @@
+{
+  "migrations": [
+    "2026_08_10_041853_create_base_items_table",
+    "2026_08_10_041855_create_items_table"
+  ]
+}
