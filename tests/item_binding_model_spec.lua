@@ -1,9 +1,10 @@
 -- tests/item_binding_model_spec.lua
--- Run from the worktree root: lua5.4 tests/item_binding_model_spec.lua
--- CORE_ROOT is the path to the core repository root (6 levels up from this file:
--- tests/ -> worktree -> .claude -> oblsk_items -> modules -> core -> core-root)
+-- Run from the repository root: lua5.4 tests/item_binding_model_spec.lua
+-- CORE_ROOT is the path to the core repository root. oblsk_items lives at
+-- <core-root>/modules/oblsk_items/, so this file is three levels below the
+-- core root: tests/ -> oblsk_items -> modules -> core-root.
 local scriptDir = arg[0]:match('(.*/)') or './'
-local CORE_ROOT = scriptDir .. '../../../../../..'
+local CORE_ROOT = scriptDir .. '../../..'
 
 dofile(CORE_ROOT .. '/tests/support/fivem_stubs.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/Dialects/Init.lua')
