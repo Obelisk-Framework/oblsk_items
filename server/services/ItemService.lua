@@ -154,6 +154,7 @@ function ItemService.remove(source, baseItem, amount)
         :where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
+        :orderBy('id', 'asc')
         :getSync()
 
     local remaining = amount
