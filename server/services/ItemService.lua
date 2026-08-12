@@ -53,4 +53,126 @@ function ItemService.use(source, item)
     end
 end
 
+--- Total amount of `baseItem` the character behind `source` owns, summed across
+--- every stack.
+--- @param source number
+--- @param baseItem table base_items row
+--- @return number
+local function ownedAmount(source, baseItem)
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then return 0 end
+
+    local rows = QueryBuilder.new('items')
+        :where('owner_type', 'character')
+        :where('owner_id', characterId)
+        :where('base_item_id', baseItem.id)
+        :getSync()
+
+    local total = 0
+    for _, row in ipairs(rows) do
+        total = total + (row.amount or 0)
+    end
+    return total
+end
+
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @return boolean true if the character owns at least `amount` of `baseItem`
+function ItemService.has(source, baseItem, amount)
+    return ownedAmount(source, baseItem) >= amount
+end
+
+--- Merges `amount` into the character's existing stack of `baseItem` if one
+--- exists, otherwise creates a new stack row. Does not split across
+--- `max_stack_amount` — see the module-level note on this function's known
+--- limitation (fine for currency-shaped items, not a general stacker).
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @return boolean, string|nil reason
+function ItemService.add(source, baseItem, amount)
+    if type(amount) ~= 'number' or amount <= 0 then
+        return false, 'Invalid amount'
+    end
+
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then
+        return false, 'No active character'
+    end
+
+    local existing = QueryBuilder.new('items')
+        :where('owner_type', 'character')
+        :where('owner_id', characterId)
+        :where('base_item_id', baseItem.id)
+        :firstSync()
+
+    if existing then
+        QueryBuilder.new('items'):where('id', existing.id):update({
+            amount = existing.amount + amount,
+            updated_at = Database.now(),
+        })
+    else
+        QueryBuilder.new('items'):insert({
+            base_item_id = baseItem.id,
+            owner_type = 'character',
+            owner_id = characterId,
+            amount = amount,
+            data = {},
+            created_at = Database.now(),
+            updated_at = Database.now(),
+        })
+    end
+
+    return true
+end
+
+--- Spends `amount` of `baseItem` from the character's stacks, oldest row
+--- first, deleting any stack that reaches zero. Fails (no mutation at all) if
+--- the character doesn't own enough — callers must check `ItemService.has`
+--- first if they need to distinguish "not enough" from other failures, but
+--- this also self-checks so it's safe to call directly.
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @return boolean, string|nil reason
+function ItemService.remove(source, baseItem, amount)
+    if type(amount) ~= 'number' or amount <= 0 then
+        return false, 'Invalid amount'
+    end
+
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then
+        return false, 'No active character'
+    end
+
+    if not ItemService.has(source, baseItem, amount) then
+        return false, 'Not enough items'
+    end
+
+    local rows = QueryBuilder.new('items')
+        :where('owner_type', 'character')
+        :where('owner_id', characterId)
+        :where('base_item_id', baseItem.id)
+        :getSync()
+
+    local remaining = amount
+    for _, row in ipairs(rows) do
+        if remaining <= 0 then break end
+        local take = math.min(remaining, row.amount)
+        remaining = remaining - take
+        local newAmount = row.amount - take
+        if newAmount <= 0 then
+            QueryBuilder.new('items'):where('id', row.id):delete()
+        else
+            QueryBuilder.new('items'):where('id', row.id):update({
+                amount = newAmount,
+                updated_at = Database.now(),
+            })
+        end
+    end
+
+    return true
+end
+
 return ItemService
