@@ -77,7 +77,7 @@ function ItemService.registerRequirements(pluginName, bindingsTbl)
 end
 
 --- @param key string
---- @return table|nil the bound BaseItem row, or nil if unbound (or unrequired)
+--- @return table|nil the bound BaseItem's plain attributes table, or nil if unbound (or unrequired)
 function ItemService.binding(key)
     local hit = resolved[key]
     if hit ~= nil then
@@ -103,8 +103,8 @@ function ItemService.binding(key)
         return nil
     end
 
-    resolved[key] = base
-    return base
+    resolved[key] = base.attributes
+    return base.attributes
 end
 
 --- @param key string
@@ -129,7 +129,7 @@ function ItemService.resetBindingCacheForTests()
 end
 
 --- @return string[] every key any loaded plugin has registered as required
-function ItemService.getRequiredBindingKeysForTests()
+function ItemService.getRequiredBindingKeys()
     local keys = {}
     for key in pairs(registry) do
         table.insert(keys, key)
