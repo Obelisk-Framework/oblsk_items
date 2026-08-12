@@ -109,6 +109,33 @@ test('live merges as logical AND across multiple requirers', function()
     end)
 end)
 
+test('getRequiredBindingKeysForTests returns all registered keys', function()
+    withFreshState(function(tables)
+        ItemService.registerRequirements('banking', { ['currency.cash'] = { live = true }, ['currency.crypto'] = { live = true } })
+        ItemService.registerRequirements('shops', { ['currency.gold'] = { live = true } })
+
+        local keys = ItemService.getRequiredBindingKeysForTests()
+        eq(#keys, 3, 'should have exactly 3 keys')
+
+        -- Collect returned keys into a set for order-independent comparison
+        local keySet = {}
+        for _, key in ipairs(keys) do
+            keySet[key] = true
+        end
+
+        eq(keySet['currency.cash'], true, 'should include currency.cash')
+        eq(keySet['currency.crypto'], true, 'should include currency.crypto')
+        eq(keySet['currency.gold'], true, 'should include currency.gold')
+    end)
+end)
+
+test('getRequiredBindingKeysForTests returns empty table when no keys registered', function()
+    withFreshState(function(tables)
+        local keys = ItemService.getRequiredBindingKeysForTests()
+        eq(#keys, 0, 'should return empty table when nothing registered')
+    end)
+end)
+
 for _, t in ipairs(tests) do
     local ok, err = pcall(t.fn)
     if ok then

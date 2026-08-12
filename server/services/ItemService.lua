@@ -128,4 +128,13 @@ function ItemService.resetBindingCacheForTests()
     resolved = {}
 end
 
+--- @return string[] every key any loaded plugin has registered as required
+function ItemService.getRequiredBindingKeysForTests()
+    local keys = {}
+    for key in pairs(registry) do
+        table.insert(keys, key)
+    end
+    return keys
+end
+
 return ItemService
