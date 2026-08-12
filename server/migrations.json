@@ -1,6 +1,7 @@
 {
   "migrations": [
     "2026_08_10_041853_create_base_items_table",
-    "2026_08_10_041855_create_items_table"
+    "2026_08_10_041855_create_items_table",
+    "2026_08_12_100000_add_unique_to_base_items_name"
   ]
 }
