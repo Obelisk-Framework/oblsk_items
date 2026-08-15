@@ -264,4 +264,65 @@ function ItemService.getRequiredBindingKeys()
     return keys
 end
 
+--- @return table[] every base_items row
+function ItemService.listBaseItems()
+    return QueryBuilder.new('base_items'):getSync()
+end
+
+--- Whitelist-updates an existing base item. `name` and the `data`/`actions`
+--- JSON columns are intentionally excluded — `name` is the lookup key
+--- ItemService.binding() and every plugin's Config.Requires reference by
+--- string, and data/actions are config-shaped, not admin-panel-shaped.
+--- @param baseItemId number
+--- @param attributes table any of: description, icon, weight, is_takeable,
+---   is_giveable, is_dropable, is_container, is_useable, is_stackable, max_stack_amount
+--- @return boolean
+local EDITABLE_BASE_ITEM_FIELDS = {
+    'description', 'icon', 'weight',
+    'is_takeable', 'is_giveable', 'is_dropable', 'is_container', 'is_useable', 'is_stackable',
+    'max_stack_amount',
+}
+function ItemService.updateBaseItem(baseItemId, attributes)
+    local update = {}
+    for _, field in ipairs(EDITABLE_BASE_ITEM_FIELDS) do
+        if attributes[field] ~= nil then
+            update[field] = attributes[field]
+        end
+    end
+    QueryBuilder.new('base_items'):where('id', baseItemId):update(update)
+
+    for key, value in pairs(resolved) do
+        if value and value.id == baseItemId then
+            resolved[key] = nil
+        end
+    end
+
+    return true
+end
+
+--- @param attributes table see BaseItem.fillable for accepted keys
+--- @return number|nil id, string|nil reason
+function ItemService.createBaseItem(attributes)
+    if not attributes.name or attributes.name == '' then
+        return nil, 'Name is required'
+    end
+    local ok, result = pcall(function() return BaseItem:createSync(attributes) end)
+    if not ok then
+        return nil, 'Name already in use'
+    end
+    return result.attributes.id, nil
+end
+
+--- @param source number target player to give the item to
+--- @param baseItemId number
+--- @param amount number
+--- @return boolean, string|nil reason
+function ItemService.giveToPlayer(source, baseItemId, amount)
+    local base = BaseItem:findSync(baseItemId)
+    if not base then
+        return false, 'Item not found'
+    end
+    return ItemService.add(source, base.attributes, amount)
+end
+
 return ItemService
