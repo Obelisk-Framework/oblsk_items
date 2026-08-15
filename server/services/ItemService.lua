@@ -90,8 +90,12 @@ end
 --- @param source number
 --- @param baseItem table base_items row
 --- @param amount number
+--- @param data table|nil per-instance data merged onto the stack row (new
+---   stacks only — an existing stack is never overwritten with different
+---   instance data, since merging two different garments into one stack
+---   would lose one side's component/drawable/texture)
 --- @return boolean, string|nil reason
-function ItemService.add(source, baseItem, amount)
+function ItemService.add(source, baseItem, amount, data)
     if type(amount) ~= 'number' or amount <= 0 then
         return false, 'Invalid amount'
     end
@@ -118,7 +122,7 @@ function ItemService.add(source, baseItem, amount)
             owner_type = 'character',
             owner_id = characterId,
             amount = amount,
-            data = {},
+            data = data or {},
             created_at = Database.now(),
             updated_at = Database.now(),
         })
