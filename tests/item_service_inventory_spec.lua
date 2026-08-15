@@ -81,6 +81,23 @@ test('add: merges into an existing stack of the same item', function()
     end)
 end)
 
+test('add: forceNewStack skips merging and always inserts a new row, each keeping its own data', function()
+    withFreshState({}, function(fake)
+        local ok1 = ItemService.add(999, CASH, 1, { textureId = 0, colorLabel = 'White' }, true)
+        local ok2 = ItemService.add(999, CASH, 1, { textureId = 1, colorLabel = 'Black' }, true)
+        eq(ok1, true)
+        eq(ok2, true)
+        local rows = fake.new('items'):where('owner_type', 'character'):where('owner_id', 5):getSync()
+        eq(#rows, 2)
+        eq(rows[1].amount, 1)
+        eq(rows[2].amount, 1)
+        eq(rows[1].data.textureId, 0)
+        eq(rows[1].data.colorLabel, 'White')
+        eq(rows[2].data.textureId, 1)
+        eq(rows[2].data.colorLabel, 'Black')
+    end)
+end)
+
 test('remove: fails and mutates nothing when the character owns less than requested', function()
     withFreshState({
         [1] = { id = 1, base_item_id = 1, owner_type = 'character', owner_id = 5, amount = 10 },

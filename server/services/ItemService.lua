@@ -94,8 +94,13 @@ end
 ---   stacks only — an existing stack is never overwritten with different
 ---   instance data, since merging two different garments into one stack
 ---   would lose one side's component/drawable/texture)
+--- @param forceNewStack boolean|nil when truthy, skip the existing-stack
+---   lookup entirely and always insert a new row — an escape hatch for
+---   callers whose `data` distinguishes otherwise-identical base items
+---   (e.g. clothing variants sharing one base_item_id) and must never be
+---   silently merged into an existing stack
 --- @return boolean, string|nil reason
-function ItemService.add(source, baseItem, amount, data)
+function ItemService.add(source, baseItem, amount, data, forceNewStack)
     if type(amount) ~= 'number' or amount <= 0 then
         return false, 'Invalid amount'
     end
@@ -105,7 +110,7 @@ function ItemService.add(source, baseItem, amount, data)
         return false, 'No active character'
     end
 
-    local existing = QueryBuilder.new('items')
+    local existing = not forceNewStack and QueryBuilder.new('items')
         :where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
