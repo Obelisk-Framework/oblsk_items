@@ -104,6 +104,35 @@ test('createBaseItem: inserts a new row and returns its id', function()
     end)
 end)
 
+test('createBaseItem: with a bindingKey, upserts item_bindings to point at the new item', function()
+    withFakeDb(function(tables)
+        local id = ItemService.createBaseItem({ name = 'fishing rod', weight = 1.5 }, 'fishing.rod')
+        truthy(id ~= nil)
+        eq(#tables.item_bindings, 1)
+        eq(tables.item_bindings[1].key, 'fishing.rod')
+        eq(tables.item_bindings[1].base_item_id, id)
+    end)
+end)
+
+test('createBaseItem: bindingKey rebinds an existing key to the new item', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'old rod', weight = 1.0 } }
+        tables.item_bindings = { { id = 1, key = 'fishing.rod', base_item_id = 1 } }
+        local id = ItemService.createBaseItem({ name = 'new rod', weight = 1.2 }, 'fishing.rod')
+        truthy(id ~= nil)
+        eq(#tables.item_bindings, 1, 'must update the existing row, not insert a second one')
+        eq(tables.item_bindings[1].base_item_id, id)
+    end)
+end)
+
+test('createBaseItem: without a bindingKey, leaves item_bindings untouched', function()
+    withFakeDb(function(tables)
+        local id = ItemService.createBaseItem({ name = 'plain item', weight = 0.5 })
+        truthy(id ~= nil)
+        eq(tables.item_bindings, nil)
+    end)
+end)
+
 --------------------------------------------------------------------------------
 -- giveToPlayer
 --------------------------------------------------------------------------------

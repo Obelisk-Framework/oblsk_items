@@ -395,8 +395,15 @@ function ItemService.updateBaseItem(baseItemId, attributes)
 end
 
 --- @param attributes table see BaseItem.fillable for accepted keys
+--- @param bindingKey string|nil if given, upserts an item_bindings row
+---   pointing that key at the newly created item — the admin-panel
+---   equivalent of a plugin calling ItemService.registerRequirements and an
+---   operator hand-writing the item_bindings row. Does not check whether
+---   any plugin has actually registered bindingKey as required; binding()
+---   itself already warns on an unrequired key, that check doesn't need
+---   duplicating here.
 --- @return number|nil id, string|nil reason
-function ItemService.createBaseItem(attributes)
+function ItemService.createBaseItem(attributes, bindingKey)
     if not attributes.name or attributes.name == '' then
         return nil, 'Name is required'
     end
@@ -404,7 +411,26 @@ function ItemService.createBaseItem(attributes)
     if not ok then
         return nil, 'Name already in use'
     end
-    return result.attributes.id, nil
+    local id = result.attributes.id
+
+    if bindingKey then
+        local existingBinding = QueryBuilder.new('item_bindings'):where('key', bindingKey):firstSync()
+        if existingBinding then
+            QueryBuilder.new('item_bindings'):where('id', existingBinding.id):update({
+                base_item_id = id,
+                updated_at = Database.now(),
+            })
+        else
+            QueryBuilder.new('item_bindings'):insert({
+                key = bindingKey,
+                base_item_id = id,
+                updated_at = Database.now(),
+            })
+        end
+        resolved[bindingKey] = nil
+    end
+
+    return id, nil
 end
 
 --- @param source number target player to give the item to
