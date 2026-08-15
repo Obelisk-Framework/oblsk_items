@@ -69,6 +69,27 @@ test('updateBaseItem: updates whitelisted fields only', function()
     end)
 end)
 
+test('updateBaseItem: invalidates the binding resolve cache', function()
+    withFakeDb(function(tables)
+        ItemService.resetBindingCacheForTests()
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5 } }
+        tables.item_bindings = { { id = 1, key = 'test.key', base_item_id = 1 } }
+
+        ItemService.registerRequirements('test-plugin', { ['test.key'] = { live = true } })
+
+        local before = ItemService.binding('test.key')
+        eq(before.weight, 0.5, 'cache should hold the pre-update weight')
+
+        local ok = ItemService.updateBaseItem(1, { weight = 0.9 })
+        truthy(ok)
+
+        local after = ItemService.binding('test.key')
+        eq(after.weight, 0.9, 'binding() must re-resolve after updateBaseItem invalidates the cache')
+
+        ItemService.resetBindingCacheForTests()
+    end)
+end)
+
 --------------------------------------------------------------------------------
 -- createBaseItem
 --------------------------------------------------------------------------------

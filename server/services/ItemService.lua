@@ -286,6 +286,13 @@ function ItemService.updateBaseItem(baseItemId, attributes)
         end
     end
     QueryBuilder.new('base_items'):where('id', baseItemId):update(update)
+
+    for key, value in pairs(resolved) do
+        if value and value.id == baseItemId then
+            resolved[key] = nil
+        end
+    end
+
     return true
 end
 
