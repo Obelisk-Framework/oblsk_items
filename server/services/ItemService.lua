@@ -32,9 +32,9 @@ end
 --- the item type isn't marked is_useable. Each pipeline entry's action_id is
 --- an integer referencing actions.id (see ActionService); unknown ids are
 --- skipped with a warning, not treated as a hard failure.
---- @param source number Player server ID
+--- @param player table Player instance
 --- @param item table Item instance
-function ItemService.use(source, item)
+function ItemService.use(player, item)
     local baseItem = BaseItem:findSync(item.attributes.base_item_id)
     if not baseItem or not isTruthyFlag(baseItem.attributes.is_useable) then return end
 
@@ -46,7 +46,7 @@ function ItemService.use(source, item)
             local data = baseItem:copyTable(entry.data or {})
             data.item = item
             data.baseItem = baseItem
-            ActionService.execute(source, actionId, data)
+            ActionService.execute(player, actionId, data)
         else
             print('[ItemService] WARNING: base_item #' .. baseItem.attributes.id .. ' references unknown action db id ' .. tostring(entry.action_id) .. ', skipping')
         end

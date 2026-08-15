@@ -2,13 +2,13 @@
 --- Registered once at module load, same mechanism every other action in the
 --- framework uses (see core/server/Services/ActionService.lua).
 
-ActionService.register('item:consume_step', function(source, data)
+ActionService.register('item:consume_step', function(player, data)
     if not (data.item and data.baseItem) then return end
     ItemService.consumeStep(data.item, data.baseItem)
 end, { label = 'Consume one step of a depletable item' })
 
-ActionService.register('item:notify', function(source, data)
-    NotificationService.notify(source, {
+ActionService.register('item:notify', function(player, data)
+    NotificationService.notify(player, {
         type = data.kind or 'info',
         title = data.title,
         description = data.text
