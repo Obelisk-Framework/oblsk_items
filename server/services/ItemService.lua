@@ -3,6 +3,12 @@
 --- item:consume_step action delegates to.
 ItemService = {}
 
+--- Flat, framework-wide carry limits (not per-character for v1 — see
+--- docs/superpowers/specs/2026-08-16-fishing-plugin-design.md). Public and
+--- mutable so tests (and, later, an admin setting) can override them.
+ItemService.MaxSlots = 40
+ItemService.MaxWeight = 30.0
+
 --- True only for the DB's various truthy encodings of a boolean flag. A
 --- TINYINT(1) column decodes to 0 or 1, and 0 is truthy in Lua, so callers
 --- must not check the raw attribute directly.
@@ -180,6 +186,89 @@ function ItemService.remove(source, baseItem, amount)
                 updated_at = Database.now(),
             })
         end
+    end
+
+    return true
+end
+
+--- Per-unit weight of a base_items row, scaled by a depleting item's
+--- remaining step data the same way Item:getWeight() computes it for a
+--- single instance — duplicated here (rather than reusing the Item model)
+--- because hasCapacity works off raw base_items/items rows via
+--- QueryBuilder, not loaded Item/BaseItem model instances.
+--- @param base table base_items row
+--- @param row table items row (may be nil for a not-yet-existing stack)
+--- @return number
+local function unitWeight(base, row)
+    local w = base.weight or 0
+    local key = base.step_key
+    if key and base.step and row and row.data and base.data and row.data[key] and base.data[key] then
+        return w * (row.data[key] / base.data[key])
+    end
+    return w
+end
+
+--- Total weight of everything a character carries: every top-level
+--- character-owned stack, plus recursively every item stored inside a
+--- container the character owns (owner_type = 'item', chained owner_id).
+--- @param characterId number
+--- @return number
+local function totalCarriedWeight(characterId)
+    local baseItemsById = {}
+    local function base(id)
+        if baseItemsById[id] == nil then
+            baseItemsById[id] = QueryBuilder.new('base_items'):where('id', id):firstSync() or false
+        end
+        return baseItemsById[id] or nil
+    end
+
+    local total = 0
+    local function sumOwnedBy(ownerType, ownerId)
+        local rows = QueryBuilder.new('items'):where('owner_type', ownerType):where('owner_id', ownerId):getSync()
+        for _, row in ipairs(rows) do
+            local b = base(row.base_item_id)
+            if b then
+                total = total + unitWeight(b, row) * (row.amount or 1)
+                sumOwnedBy('item', row.id) -- recurse into this row's own contents, if any
+            end
+        end
+    end
+
+    sumOwnedBy('character', characterId)
+    return total
+end
+
+--- Whether granting `amount` of `baseItem` to `source`'s active character
+--- would exceed ItemService.MaxSlots or ItemService.MaxWeight. Mirrors the
+--- same existing-stack lookup ItemService.add itself does, so the
+--- projection matches what add() will actually do.
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @param forceNewStack boolean|nil
+--- @return boolean ok
+--- @return string|nil reason
+function ItemService.hasCapacity(source, baseItem, amount, forceNewStack)
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then
+        return false, 'No active character'
+    end
+
+    local existing = not forceNewStack and QueryBuilder.new('items')
+        :where('owner_type', 'character')
+        :where('owner_id', characterId)
+        :where('base_item_id', baseItem.id)
+        :firstSync()
+
+    local currentSlots = #QueryBuilder.new('items'):where('owner_type', 'character'):where('owner_id', characterId):getSync()
+    local projectedSlots = currentSlots + (existing and 0 or 1)
+    if projectedSlots > ItemService.MaxSlots then
+        return false, 'Not enough inventory space'
+    end
+
+    local projectedWeight = totalCarriedWeight(characterId) + unitWeight(baseItem, nil) * amount
+    if projectedWeight > ItemService.MaxWeight then
+        return false, 'Too heavy to carry'
     end
 
     return true
