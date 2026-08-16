@@ -12,6 +12,7 @@ BaseItem.fillable = {
     'is_takeable', 'is_giveable', 'is_dropable', 'is_container', 'is_useable', 'is_stackable',
     'step', 'step_key', 'max_stack_amount',
     'data', 'actions',
+    'is_kept_after_respawn',
 }
 
 BaseItem.hidden = {}
