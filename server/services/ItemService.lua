@@ -597,9 +597,39 @@ function ItemService.setBaseItemActions(baseItemId, actions)
     return true
 end
 
---- @return table[] every base_item_categories row
+local VALID_FIELD_TYPES = { text = true, number = true, boolean = true, ['select'] = true }
+
+--- @param fields table[]|nil
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
+local function validateFields(fields)
+    if fields == nil then return true, nil end
+    local seenNames = {}
+    for _, field in ipairs(fields) do
+        if not field.name or field.name == '' then
+            return false, 'Field name is required'
+        end
+        if seenNames[field.name] then
+            return false, 'Duplicate field name: ' .. field.name
+        end
+        seenNames[field.name] = true
+        if not VALID_FIELD_TYPES[field.type] then
+            return false, 'Invalid field type: ' .. tostring(field.type)
+        end
+    end
+    return true, nil
+end
+
+--- @return table[] every base_item_categories row, with `fields` decoded into a real Lua table
 function ItemService.listCategories()
-    return QueryBuilder.new('base_item_categories'):get()
+    local rows = QueryBuilder.new('base_item_categories'):get()
+    for _, row in ipairs(rows) do
+        if type(row.fields) == 'string' then
+            local ok, decoded = pcall(json.decode, row.fields)
+            row.fields = (ok and decoded) or {}
+        end
+    end
+    return rows
 end
 
 --- @param attributes table { name: string, fields: table[]|nil }
@@ -609,17 +639,32 @@ function ItemService.createCategory(attributes)
     if not attributes.name or attributes.name == '' then
         return nil, 'Name is required'
     end
-    local result = BaseItemCategory:create(attributes)
+    local fieldsOk, fieldsReason = validateFields(attributes.fields)
+    if not fieldsOk then
+        return nil, fieldsReason
+    end
+    local ok, result = pcall(function() return BaseItemCategory:create(attributes) end)
+    if not ok then
+        return nil, 'Could not create category'
+    end
     return result.id, nil
 end
 
 --- @param categoryId number
 --- @param attributes table any of: name, fields
---- @return boolean
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
 function ItemService.updateCategory(categoryId, attributes)
+    local fieldsOk, fieldsReason = validateFields(attributes.fields)
+    if not fieldsOk then
+        return false, fieldsReason
+    end
+
     local update = {}
     if attributes.name ~= nil then update.name = attributes.name end
-    if attributes.fields ~= nil then update.fields = attributes.fields end
+    if attributes.fields ~= nil then update.fields = json.encode(attributes.fields) end
+    if next(update) == nil then return true end
+
     QueryBuilder.new('base_item_categories'):where('id', categoryId):update(update)
     return true
 end

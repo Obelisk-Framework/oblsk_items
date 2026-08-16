@@ -4,7 +4,8 @@
 --- category-specific data inputs (e.g. medical_description for a
 --- medication category). Renamed from ItemCategory to match BaseItem's
 --- naming convention — see
---- docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md.
+--- the BaseItemCategory design spec (obelisk-framework repo,
+--- docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md).
 BaseItemCategory = BaseModel:extend('base_item_categories')
 
 BaseItemCategory.primaryKey = 'id'

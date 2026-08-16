@@ -59,12 +59,97 @@ test('listCategories returns every row', function()
     end)
 end)
 
+test('listCategories decodes fields into a real Lua table, not a JSON string', function()
+    withFreshState(function()
+        ItemService.createCategory({ name = 'Medication', fields = {
+            { name = 'medical_description', type = 'text', required = true },
+            { name = 'dosage', type = 'number', required = false },
+        } })
+        local list = ItemService.listCategories()
+        eq(type(list[1].fields), 'table', 'fields must be decoded, not left as a JSON string')
+        eq(#list[1].fields, 2)
+        eq(list[1].fields[1].name, 'medical_description')
+    end)
+end)
+
 test('updateCategory updates name and fields', function()
     withFreshState(function()
         local id = ItemService.createCategory({ name = 'Medication' })
         local ok = ItemService.updateCategory(id, { fields = { { name = 'medical_description', type = 'text', required = true } } })
         truthy(ok)
-        eq(tables.base_item_categories[1].fields ~= nil, true)
+        local stored = tables.base_item_categories[1].fields
+        eq(type(stored), 'string', 'fields must be JSON-encoded before being written')
+        truthy(stored:find('medical_description', 1, true), 'encoded fields must contain the field name')
+    end)
+end)
+
+test('updateCategory with no name/fields is a no-op and does not build an empty SET clause', function()
+    withFreshState(function()
+        local id = ItemService.createCategory({ name = 'Medication' })
+        local ok = ItemService.updateCategory(id, {})
+        truthy(ok)
+        eq(tables.base_item_categories[1].name, 'Medication')
+    end)
+end)
+
+test('createCategory returns nil, reason instead of throwing when createSync fails', function()
+    withFreshState(function()
+        -- Mirrors createBaseItem's duplicate-name test pattern: force the
+        -- underlying createSync to throw and confirm createCategory's pcall
+        -- wrapping converts that into a `nil, reason` return, not a raised error.
+        local originalCreateSync = BaseItemCategory.createSync
+        BaseItemCategory.createSync = function() error('simulated DB failure') end
+        local id, reason = ItemService.createCategory({ name = 'Weapons' })
+        BaseItemCategory.createSync = originalCreateSync
+        eq(id, nil)
+        truthy(reason ~= nil, 'expected a reason string instead of a thrown error')
+    end)
+end)
+
+test('createCategory rejects a fields entry with an empty name', function()
+    withFreshState(function()
+        local id, reason = ItemService.createCategory({ name = 'Medication', fields = { { name = '', type = 'text' } } })
+        eq(id, nil)
+        truthy(reason ~= nil)
+    end)
+end)
+
+test('createCategory rejects duplicate field names', function()
+    withFreshState(function()
+        local id, reason = ItemService.createCategory({ name = 'Medication', fields = {
+            { name = 'dosage', type = 'text' },
+            { name = 'dosage', type = 'number' },
+        } })
+        eq(id, nil)
+        truthy(reason ~= nil)
+    end)
+end)
+
+test('createCategory rejects an invalid field type', function()
+    withFreshState(function()
+        local id, reason = ItemService.createCategory({ name = 'Medication', fields = { { name = 'dosage', type = 'weird' } } })
+        eq(id, nil)
+        truthy(reason ~= nil)
+    end)
+end)
+
+test('createCategory accepts a valid fields array', function()
+    withFreshState(function()
+        local id, reason = ItemService.createCategory({ name = 'Medication', fields = {
+            { name = 'dosage', type = 'number', required = false },
+            { name = 'form', type = 'select', options = { 'pill', 'liquid' } },
+        } })
+        truthy(id ~= nil)
+        eq(reason, nil)
+    end)
+end)
+
+test('updateCategory rejects an invalid fields schema without writing', function()
+    withFreshState(function()
+        local id = ItemService.createCategory({ name = 'Medication' })
+        local ok, reason = ItemService.updateCategory(id, { fields = { { name = 'dosage', type = 'nope' } } })
+        eq(ok, false)
+        truthy(reason ~= nil)
     end)
 end)
 

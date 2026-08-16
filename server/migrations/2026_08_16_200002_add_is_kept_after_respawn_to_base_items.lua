@@ -2,7 +2,8 @@
 --- Defaults false: everything is lost on respawn today; only items an
 --- admin explicitly flags (ID cards, etc.) survive, once oblsk_medic
 --- builds the consuming respawn/inventory-clearing logic (out of scope
---- here — see docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md).
+--- here — see the BaseItemCategory design spec (obelisk-framework repo,
+--- docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md).
 return {
     up = function()
         Schema.table('base_items', function(table)

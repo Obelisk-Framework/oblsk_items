@@ -1,6 +1,7 @@
 --- Migration: Add fields json column to base_item_categories
 --- Shape: [{ name, type, required, options }], type in text|number|boolean|select.
---- See docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md.
+--- See the BaseItemCategory design spec (obelisk-framework repo,
+--- docs/superpowers/specs/2026-08-16-base-item-category-fields-and-respawn-flag-design.md).
 return {
     up = function()
         Schema.table('base_item_categories', function(table)
