@@ -6,6 +6,7 @@
     "2026_08_12_100001_create_item_bindings_table",
     "2026_08_12_150000_create_item_categories_table",
     "2026_08_12_150001_add_item_category_id_to_base_items",
-    "2026_08_16_200000_rename_item_categories_to_base_item_categories"
+    "2026_08_16_200000_rename_item_categories_to_base_item_categories",
+    "2026_08_16_200001_add_fields_to_base_item_categories"
   ]
 }

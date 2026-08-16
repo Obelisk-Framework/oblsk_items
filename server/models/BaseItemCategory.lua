@@ -10,7 +10,11 @@ BaseItemCategory = BaseModel:extend('base_item_categories')
 BaseItemCategory.primaryKey = 'id'
 BaseItemCategory.timestamps = true
 
-BaseItemCategory.fillable = { 'name' }
+BaseItemCategory.fillable = { 'name', 'fields' }
+
+BaseItemCategory.casts = {
+    fields = 'json',
+}
 
 BaseItemCategory.hidden = {}
 
