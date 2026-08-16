@@ -75,6 +75,30 @@ test('use: a useable item with a registered action calls ActionService.execute w
     end)
 end)
 
+test('use: onlyActionDbId runs only the matching pipeline entry', function()
+    local baseItem = makeBaseItem({
+        id = 3,
+        is_useable = true,
+        actions = {
+            { action_id = 42, data = { foo = 'bar' } },
+            { action_id = 43, data = { baz = 'qux' } },
+        },
+    })
+    local item = { attributes = { base_item_id = 3 } }
+    local fakePlayer = { getSource = function(self) return 999 end }
+
+    withStubs({
+        baseItemsById = { [3] = baseItem },
+        actionIdsByDbId = { [42] = 'item:notify', [43] = 'item:consume_step' },
+    }, function(executeCalls)
+        ItemService.use(fakePlayer, item, 43)
+
+        eq(#executeCalls, 1)
+        eq(executeCalls[1].actionId, 'item:consume_step')
+        eq(executeCalls[1].data.baz, 'qux')
+    end)
+end)
+
 test('use: a non-useable item does nothing', function()
     local baseItem = makeBaseItem({
         id = 2,

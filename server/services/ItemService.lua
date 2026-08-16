@@ -40,21 +40,28 @@ end
 --- skipped with a warning, not treated as a hard failure.
 --- @param player table Player instance
 --- @param item table Item instance
-function ItemService.use(player, item)
+--- @param onlyActionDbId number|nil when given, run only the pipeline
+---   entry(ies) whose action_id matches this actions.id (a context-menu
+---   click on one specific resolved action); when nil, run every pipeline
+---   entry as before (the generic "Use" fallback for items without
+---   per-action UI yet)
+function ItemService.use(player, item, onlyActionDbId)
     local baseItem = BaseItem:findSync(item.attributes.base_item_id)
     if not baseItem or not isTruthyFlag(baseItem.attributes.is_useable) then return end
 
     item.baseItem = baseItem
 
     for _, entry in ipairs(baseItem.attributes.actions or {}) do
-        local actionId = ActionService.resolveDbId(entry.action_id)
-        if actionId then
-            local data = baseItem:copyTable(entry.data or {})
-            data.item = item
-            data.baseItem = baseItem
-            ActionService.execute(player, actionId, data)
-        else
-            print('[ItemService] WARNING: base_item #' .. baseItem.attributes.id .. ' references unknown action db id ' .. tostring(entry.action_id) .. ', skipping')
+        if onlyActionDbId == nil or entry.action_id == onlyActionDbId then
+            local actionId = ActionService.resolveDbId(entry.action_id)
+            if actionId then
+                local data = baseItem:copyTable(entry.data or {})
+                data.item = item
+                data.baseItem = baseItem
+                ActionService.execute(player, actionId, data)
+            else
+                print('[ItemService] WARNING: base_item #' .. baseItem.attributes.id .. ' references unknown action db id ' .. tostring(entry.action_id) .. ', skipping')
+            end
         end
     end
 end
@@ -358,6 +365,65 @@ function ItemService.getRequiredBindingKeys()
     return keys
 end
 
+--- Shared upsert logic for pointing a binding key at a base item — the same
+--- inline logic ItemService.createBaseItem used at creation time, extracted
+--- so ItemService.setBinding can reuse it for post-creation rebinds too.
+--- Invalidates the resolve cache for `key` either way.
+--- @param key string
+--- @param baseItemId number
+local function upsertBinding(key, baseItemId)
+    local existingBinding = QueryBuilder.new('item_bindings'):where('key', key):firstSync()
+    if existingBinding then
+        QueryBuilder.new('item_bindings'):where('id', existingBinding.id):update({
+            base_item_id = baseItemId,
+            updated_at = Database.now(),
+        })
+    else
+        QueryBuilder.new('item_bindings'):insert({
+            key = key,
+            base_item_id = baseItemId,
+            updated_at = Database.now(),
+        })
+    end
+    resolved[key] = nil
+end
+
+--- @return table[] every item_bindings row, each with its base_item_id and
+---   (when the bound item still exists) the bound item's name
+function ItemService.listBindings()
+    local rows = QueryBuilder.new('item_bindings'):getSync()
+    local out = {}
+    for _, row in ipairs(rows) do
+        local base = QueryBuilder.new('base_items'):where('id', row.base_item_id):firstSync()
+        table.insert(out, {
+            id = row.id,
+            key = row.key,
+            base_item_id = row.base_item_id,
+            base_item_name = base and base.name or nil,
+        })
+    end
+    return out
+end
+
+--- Points `key` at `baseItemId`, upserting the item_bindings row (same
+--- semantics as createBaseItem's bindingKey argument, usable after creation).
+--- @param key string
+--- @param baseItemId number
+--- @return boolean
+function ItemService.setBinding(key, baseItemId)
+    upsertBinding(key, baseItemId)
+    return true
+end
+
+--- Deletes the item_bindings row for `key`, if any.
+--- @param key string
+--- @return boolean
+function ItemService.clearBinding(key)
+    QueryBuilder.new('item_bindings'):where('key', key):delete()
+    resolved[key] = nil
+    return true
+end
+
 --- @return table[] every base_items row
 function ItemService.listBaseItems()
     return QueryBuilder.new('base_items'):getSync()
@@ -383,6 +449,19 @@ function ItemService.updateBaseItem(baseItemId, attributes)
             update[field] = attributes[field]
         end
     end
+
+    -- "Can be taken" always implies "Can be traded": if is_takeable ends up
+    -- true (whether just set here or already true on the existing row),
+    -- force is_giveable true too, regardless of what was separately passed.
+    local resolvedTakeable = update.is_takeable
+    if resolvedTakeable == nil then
+        local existing = QueryBuilder.new('base_items'):where('id', baseItemId):firstSync()
+        resolvedTakeable = existing and existing.is_takeable
+    end
+    if isTruthyFlag(resolvedTakeable) then
+        update.is_giveable = true
+    end
+
     QueryBuilder.new('base_items'):where('id', baseItemId):update(update)
 
     for key, value in pairs(resolved) do
@@ -407,6 +486,13 @@ function ItemService.createBaseItem(attributes, bindingKey)
     if not attributes.name or attributes.name == '' then
         return nil, 'Name is required'
     end
+
+    -- "Can be taken" always implies "Can be traded" — see updateBaseItem's
+    -- matching enforcement.
+    if isTruthyFlag(attributes.is_takeable) then
+        attributes.is_giveable = true
+    end
+
     local ok, result = pcall(function() return BaseItem:createSync(attributes) end)
     if not ok then
         return nil, 'Name already in use'
@@ -414,20 +500,7 @@ function ItemService.createBaseItem(attributes, bindingKey)
     local id = result.attributes.id
 
     if bindingKey then
-        local existingBinding = QueryBuilder.new('item_bindings'):where('key', bindingKey):firstSync()
-        if existingBinding then
-            QueryBuilder.new('item_bindings'):where('id', existingBinding.id):update({
-                base_item_id = id,
-                updated_at = Database.now(),
-            })
-        else
-            QueryBuilder.new('item_bindings'):insert({
-                key = bindingKey,
-                base_item_id = id,
-                updated_at = Database.now(),
-            })
-        end
-        resolved[bindingKey] = nil
+        upsertBinding(bindingKey, id)
     end
 
     return id, nil
@@ -443,6 +516,35 @@ function ItemService.giveToPlayer(source, baseItemId, amount)
         return false, 'Item not found'
     end
     return ItemService.add(source, base.attributes, amount)
+end
+
+--- @return table[] every registered action (the `actions` table), for the
+---   admin panel's action picker
+function ItemService.listAvailableActions()
+    return QueryBuilder.new('actions'):getSync()
+end
+
+--- Whitelist-replaces a base item's `actions` pipeline (the json column
+--- EDITABLE_BASE_ITEM_FIELDS/updateBaseItem intentionally excludes, since
+--- it's config-shaped rather than admin-panel-shaped for most fields — this
+--- is a separate, narrowly-scoped write path just for the admin's Actions
+--- editor). Entries referencing an action_id not present in the `actions`
+--- table are skipped rather than rejecting the whole write.
+--- @param baseItemId number
+--- @param actions table[] full replacement array of { action_id, data }
+--- @return boolean
+function ItemService.setBaseItemActions(baseItemId, actions)
+    local valid = {}
+    for _, entry in ipairs(actions or {}) do
+        local exists = QueryBuilder.new('actions'):where('id', entry.action_id):firstSync()
+        if exists then
+            table.insert(valid, { action_id = entry.action_id, data = entry.data or {} })
+        else
+            print('[ItemService] WARNING: setBaseItemActions: skipping unknown action db id ' .. tostring(entry.action_id))
+        end
+    end
+    QueryBuilder.new('base_items'):where('id', baseItemId):update({ actions = valid })
+    return true
 end
 
 return ItemService

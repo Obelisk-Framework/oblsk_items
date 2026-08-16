@@ -27,6 +27,7 @@ local function eq(actual, expected, msg)
         error((msg or 'assertion failed') .. '\n  expected: ' .. tostring(expected) .. '\n  actual:   ' .. tostring(actual), 2)
     end
 end
+local function truthy(v, msg) if not v then error(msg or 'expected truthy', 2) end end
 
 --- Fresh fake-DB tables + a fresh ItemService binding cache per test, so
 --- tests don't leak state through ItemService's module-level `resolved` cache.
@@ -134,6 +135,82 @@ test('getRequiredBindingKeys returns empty table when no keys registered', funct
     withFreshState(function(tables)
         local keys = ItemService.getRequiredBindingKeys()
         eq(#keys, 0, 'should return empty table when nothing registered')
+    end)
+end)
+
+--------------------------------------------------------------------------------
+-- listBindings / setBinding / clearBinding
+--------------------------------------------------------------------------------
+
+test('listBindings: returns every item_bindings row, joined with the bound item name', function()
+    withFreshState(function(tables)
+        tables.base_items[1] = { id = 1, name = 'cash' }
+        tables.item_bindings[1] = { id = 1, key = 'currency.cash', base_item_id = 1 }
+        local rows = ItemService.listBindings()
+        eq(#rows, 1)
+        eq(rows[1].key, 'currency.cash')
+        eq(rows[1].base_item_id, 1)
+        eq(rows[1].base_item_name, 'cash')
+    end)
+end)
+
+test('listBindings: tolerates a binding pointing at a missing item (nil name, no error)', function()
+    withFreshState(function(tables)
+        tables.item_bindings[1] = { id = 1, key = 'currency.cash', base_item_id = 999 }
+        local ok, rows = pcall(ItemService.listBindings)
+        eq(ok, true)
+        eq(#rows, 1)
+        eq(rows[1].base_item_name, nil)
+    end)
+end)
+
+test('setBinding: inserts a new item_bindings row when the key has none yet', function()
+    withFreshState(function(tables)
+        tables.base_items[1] = { id = 1, name = 'cash' }
+        local ok = ItemService.setBinding('currency.cash', 1)
+        truthy(ok)
+        eq(#tables.item_bindings, 1)
+        eq(tables.item_bindings[1].key, 'currency.cash')
+        eq(tables.item_bindings[1].base_item_id, 1)
+    end)
+end)
+
+test('setBinding: rebinds an existing key to a different item and invalidates the resolve cache', function()
+    withFreshState(function(tables)
+        tables.base_items[1] = { id = 1, name = 'old cash' }
+        tables.base_items[2] = { id = 2, name = 'new cash' }
+        tables.item_bindings[1] = { id = 1, key = 'currency.cash', base_item_id = 1 }
+        ItemService.registerRequirements('banking', { ['currency.cash'] = { live = true } })
+
+        eq(ItemService.binding('currency.cash').id, 1, 'resolve cache is warm before the rebind')
+
+        local ok = ItemService.setBinding('currency.cash', 2)
+        truthy(ok)
+        eq(#tables.item_bindings, 1, 'must update the existing row, not insert a second one')
+        eq(tables.item_bindings[1].base_item_id, 2)
+        eq(ItemService.binding('currency.cash').id, 2, 'binding() must re-resolve to the new item')
+    end)
+end)
+
+test('clearBinding: deletes the item_bindings row for that key', function()
+    withFreshState(function(tables)
+        tables.base_items[1] = { id = 1, name = 'cash' }
+        tables.item_bindings[1] = { id = 1, key = 'currency.cash', base_item_id = 1 }
+        ItemService.registerRequirements('banking', { ['currency.cash'] = { live = true } })
+        ItemService.binding('currency.cash')
+
+        local ok = ItemService.clearBinding('currency.cash')
+        truthy(ok)
+        eq(#tables.item_bindings, 0)
+        eq(ItemService.binding('currency.cash'), nil, 'binding() must re-resolve (now unbound) after clearBinding')
+    end)
+end)
+
+test('clearBinding: a key with no binding is a harmless no-op', function()
+    withFreshState(function(tables)
+        local ok = ItemService.clearBinding('currency.cash')
+        truthy(ok)
+        eq(#tables.item_bindings, 0)
     end)
 end)
 
