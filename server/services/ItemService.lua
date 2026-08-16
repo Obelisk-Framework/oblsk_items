@@ -547,4 +547,42 @@ function ItemService.setBaseItemActions(baseItemId, actions)
     return true
 end
 
+--- @return table[] every base_item_categories row
+function ItemService.listCategories()
+    return QueryBuilder.new('base_item_categories'):get()
+end
+
+--- @param attributes table { name: string, fields: table[]|nil }
+--- @return number|nil id
+--- @return string|nil reason set only when id is nil
+function ItemService.createCategory(attributes)
+    if not attributes.name or attributes.name == '' then
+        return nil, 'Name is required'
+    end
+    local result = BaseItemCategory:create(attributes)
+    return result.id, nil
+end
+
+--- @param categoryId number
+--- @param attributes table any of: name, fields
+--- @return boolean
+function ItemService.updateCategory(categoryId, attributes)
+    local update = {}
+    if attributes.name ~= nil then update.name = attributes.name end
+    if attributes.fields ~= nil then update.fields = attributes.fields end
+    QueryBuilder.new('base_item_categories'):where('id', categoryId):update(update)
+    return true
+end
+
+--- @param categoryId number
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
+function ItemService.deleteCategory(categoryId)
+    local inUse = QueryBuilder.new('base_items'):where('base_item_category_id', categoryId):first()
+    if inUse then
+        return false, 'Category is still assigned to one or more items'
+    end
+    QueryBuilder.new('base_item_categories'):where('id', categoryId):delete()
+    return true, nil
+end
 return ItemService
