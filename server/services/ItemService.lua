@@ -515,7 +515,7 @@ function ItemService.updateBaseItemCategoryData(baseItemId, values)
         end
     end
 
-    QueryBuilder.new('base_items'):where('id', baseItemId):update({ data = json.encode(merged) })
+    baseItem:update({ data = merged })
 
     return #errors == 0, errors
 end
@@ -617,16 +617,9 @@ local function validateFields(fields)
     return true, nil
 end
 
---- @return table[] every base_item_categories row, with `fields` decoded into a real Lua table
+--- @return BaseItemCategory[] every category row as model instances (fields decoded via json cast)
 function ItemService.listCategories()
-    local rows = QueryBuilder.new('base_item_categories'):get()
-    for _, row in ipairs(rows) do
-        if type(row.fields) == 'string' then
-            local ok, decoded = pcall(json.decode, row.fields)
-            row.fields = (ok and decoded) or {}
-        end
-    end
-    return rows
+    return BaseItemCategory:all()
 end
 
 --- @param attributes table { name: string, fields: table[]|nil }
@@ -659,10 +652,12 @@ function ItemService.updateCategory(categoryId, attributes)
 
     local update = {}
     if attributes.name ~= nil then update.name = attributes.name end
-    if attributes.fields ~= nil then update.fields = json.encode(attributes.fields) end
+    if attributes.fields ~= nil then update.fields = attributes.fields end
     if next(update) == nil then return true end
 
-    QueryBuilder.new('base_item_categories'):where('id', categoryId):update(update)
+    local category = BaseItemCategory:find(categoryId)
+    if not category then return false, 'Category not found' end
+    category:update(update)
     return true
 end
 
@@ -670,11 +665,13 @@ end
 --- @return boolean ok
 --- @return string|nil reason set only when ok is false
 function ItemService.deleteCategory(categoryId)
-    local inUse = QueryBuilder.new('base_items'):where('base_item_category_id', categoryId):first()
-    if inUse then
+    local category = BaseItemCategory:find(categoryId)
+    if not category then return true, nil end
+    category:load('baseItems')
+    if category.baseItems and #category.baseItems > 0 then
         return false, 'Category is still assigned to one or more items'
     end
-    QueryBuilder.new('base_item_categories'):where('id', categoryId):delete()
+    category:delete()
     return true, nil
 end
 return ItemService

@@ -19,4 +19,8 @@ BaseItemCategory.casts = {
 
 BaseItemCategory.hidden = {}
 
+function BaseItemCategory:baseItems()
+    return self:hasMany(BaseItem, 'base_item_category_id', 'id')
+end
+
 return BaseItemCategory
