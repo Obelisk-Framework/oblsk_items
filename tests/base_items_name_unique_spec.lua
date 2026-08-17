@@ -26,13 +26,13 @@ test('migration adds a unique index on base_items.name', function()
     local migration = dofile(scriptDir .. '../server/migrations/2026_08_12_100000_add_unique_to_base_items_name.lua')
     local statements = {}
     -- Schema.table emits ALTER statements; capture them instead of hitting a real DB.
-    local originalExecute = Database.querySync
-    Database.querySync = function(sql, params)
+    local originalExecute = Database.query
+    Database.query = function(sql, params)
         table.insert(statements, sql)
         return {}
     end
     migration.up()
-    Database.querySync = originalExecute
+    Database.query = originalExecute
 
     local sawUnique = false
     for _, sql in ipairs(statements) do

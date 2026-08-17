@@ -9,7 +9,7 @@
 -- own.
 local scriptDir = arg[0]:match('(.*/)') or './'
 
--- BaseItem is stubbed directly below (findSync/copyTable), so ItemService.lua
+-- BaseItem is stubbed directly below (find/copyTable), so ItemService.lua
 -- loads without needing the real ORM/BaseModel machinery.
 dofile(scriptDir .. '../server/services/ItemService.lua')
 
@@ -22,7 +22,7 @@ local function eq(actual, expected, msg)
 end
 
 --- Builds a fake BaseItem row (plain table, with the two methods ItemService
---- uses: findSync as a "class" lookup and copyTable as an instance method).
+--- uses: find as a "class" lookup and copyTable as an instance method).
 local function makeBaseItem(attributes)
     local baseItem = { attributes = attributes }
     function baseItem:copyTable(t)
@@ -37,7 +37,7 @@ local function withStubs(opts, fn)
     local executeCalls = {}
 
     BaseItem = {}
-    function BaseItem:findSync(id)
+    function BaseItem:find(id)
         return opts.baseItemsById[id]
     end
 

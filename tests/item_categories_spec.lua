@@ -24,13 +24,13 @@ end
 
 local function captureStatements(fn)
     local statements = {}
-    local original = Database.querySync
-    Database.querySync = function(sql, params)
+    local original = Database.query
+    Database.query = function(sql, params)
         table.insert(statements, sql)
         return {}
     end
     fn()
-    Database.querySync = original
+    Database.query = original
     return statements
 end
 
