@@ -441,6 +441,7 @@ local EDITABLE_BASE_ITEM_FIELDS = {
     'description', 'icon', 'weight',
     'is_takeable', 'is_giveable', 'is_dropable', 'is_container', 'is_useable', 'is_stackable',
     'max_stack_amount',
+    'base_item_category_id', 'is_kept_after_respawn',
 }
 function ItemService.updateBaseItem(baseItemId, attributes)
     local update = {}
@@ -471,6 +472,52 @@ function ItemService.updateBaseItem(baseItemId, attributes)
     end
 
     return true
+end
+
+--- Merges only the base item's category's schema-declared field names
+--- into its existing `data` JSON — every other existing `data` key is left
+--- untouched. `updateBaseItem`'s own `data` exclusion is unaffected: this
+--- is a separate, narrowly-scoped path for category-schema fields only.
+--- @param baseItemId number
+--- @param values table { [fieldName] = value, ... } — keys not declared by
+---   the item's category schema are silently ignored
+--- @return boolean ok false only if at least one required field resolved empty
+--- @return string[] errors one entry per rejected required-but-empty field
+function ItemService.updateBaseItemCategoryData(baseItemId, values)
+    local baseItem = BaseItem:find(baseItemId)
+    if not baseItem then
+        return true, {}
+    end
+
+    local categoryId = baseItem.base_item_category_id
+    if not categoryId then
+        return true, {}
+    end
+
+    local category = BaseItemCategory:find(categoryId)
+    local fields = (category and category.fields) or {}
+    if #fields == 0 then
+        return true, {}
+    end
+
+    local errors = {}
+    local merged = {}
+    local existing = baseItem.data or {}
+    for k, v in pairs(existing) do merged[k] = v end
+
+    for _, field in ipairs(fields) do
+        local value = values[field.name]
+        local isEmpty = value == nil or value == ''
+        if field.required and isEmpty then
+            table.insert(errors, field.name .. ' is required')
+        else
+            merged[field.name] = value
+        end
+    end
+
+    baseItem:update({ data = merged })
+
+    return #errors == 0, errors
 end
 
 --- @param attributes table see BaseItem.fillable for accepted keys
@@ -547,4 +594,84 @@ function ItemService.setBaseItemActions(baseItemId, actions)
     return true
 end
 
+local VALID_FIELD_TYPES = { text = true, number = true, boolean = true, ['select'] = true }
+
+--- @param fields table[]|nil
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
+local function validateFields(fields)
+    if fields == nil then return true, nil end
+    local seenNames = {}
+    for _, field in ipairs(fields) do
+        if not field.name or field.name == '' then
+            return false, 'Field name is required'
+        end
+        if seenNames[field.name] then
+            return false, 'Duplicate field name: ' .. field.name
+        end
+        seenNames[field.name] = true
+        if not VALID_FIELD_TYPES[field.type] then
+            return false, 'Invalid field type: ' .. tostring(field.type)
+        end
+    end
+    return true, nil
+end
+
+--- @return BaseItemCategory[] every category row as model instances (fields decoded via json cast)
+function ItemService.listCategories()
+    return BaseItemCategory:all()
+end
+
+--- @param attributes table { name: string, fields: table[]|nil }
+--- @return number|nil id
+--- @return string|nil reason set only when id is nil
+function ItemService.createCategory(attributes)
+    if not attributes.name or attributes.name == '' then
+        return nil, 'Name is required'
+    end
+    local fieldsOk, fieldsReason = validateFields(attributes.fields)
+    if not fieldsOk then
+        return nil, fieldsReason
+    end
+    local ok, result = pcall(function() return BaseItemCategory:create(attributes) end)
+    if not ok then
+        return nil, 'Could not create category'
+    end
+    return result.id, nil
+end
+
+--- @param categoryId number
+--- @param attributes table any of: name, fields
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
+function ItemService.updateCategory(categoryId, attributes)
+    local fieldsOk, fieldsReason = validateFields(attributes.fields)
+    if not fieldsOk then
+        return false, fieldsReason
+    end
+
+    local update = {}
+    if attributes.name ~= nil then update.name = attributes.name end
+    if attributes.fields ~= nil then update.fields = attributes.fields end
+    if next(update) == nil then return true end
+
+    local category = BaseItemCategory:find(categoryId)
+    if not category then return false, 'Category not found' end
+    category:update(update)
+    return true
+end
+
+--- @param categoryId number
+--- @return boolean ok
+--- @return string|nil reason set only when ok is false
+function ItemService.deleteCategory(categoryId)
+    local category = BaseItemCategory:find(categoryId)
+    if not category then return true, nil end
+    category:load('baseItems')
+    if category.baseItems and #category.baseItems > 0 then
+        return false, 'Category is still assigned to one or more items'
+    end
+    category:delete()
+    return true, nil
+end
 return ItemService

@@ -69,6 +69,15 @@ test('updateBaseItem: updates whitelisted fields only', function()
     end)
 end)
 
+test('updateBaseItem: a Database.NULL-tagged field clears the column to SQL NULL', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5, base_item_category_id = 7 } }
+        local ok = ItemService.updateBaseItem(1, { base_item_category_id = Database.NULL })
+        truthy(ok)
+        eq(tables.base_items[1].base_item_category_id, nil, 'category should be cleared, not skipped')
+    end)
+end)
+
 test('updateBaseItem: invalidates the binding resolve cache', function()
     withFakeDb(function(tables)
         ItemService.resetBindingCacheForTests()
