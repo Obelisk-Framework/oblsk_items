@@ -484,28 +484,25 @@ end
 --- @return boolean ok false only if at least one required field resolved empty
 --- @return string[] errors one entry per rejected required-but-empty field
 function ItemService.updateBaseItemCategoryData(baseItemId, values)
-    local baseItem = BaseItem:findSync(baseItemId)
+    local baseItem = BaseItem:find(baseItemId)
     if not baseItem then
         return true, {}
     end
 
-    local categoryId = baseItem.attributes.base_item_category_id
+    local categoryId = baseItem.base_item_category_id
     if not categoryId then
         return true, {}
     end
 
-    local category = BaseItemCategory:findSync(categoryId)
-    local fields = (category and category.attributes.fields) or {}
+    local category = BaseItemCategory:find(categoryId)
+    local fields = (category and category.fields) or {}
     if #fields == 0 then
         return true, {}
     end
 
     local errors = {}
     local merged = {}
-    -- BaseItem's `data` cast is 'json', so BaseModel:findSync already
-    -- decoded it into a table (BaseModel:decodeJsonCasts) — no need (and
-    -- unsafe, since it's no longer a string) to json.decode it again here.
-    local existing = baseItem.attributes.data or {}
+    local existing = baseItem.data or {}
     for k, v in pairs(existing) do merged[k] = v end
 
     for _, field in ipairs(fields) do

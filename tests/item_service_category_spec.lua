@@ -97,10 +97,10 @@ test('createCategory returns nil, reason instead of throwing when createSync fai
         -- Mirrors createBaseItem's duplicate-name test pattern: force the
         -- underlying createSync to throw and confirm createCategory's pcall
         -- wrapping converts that into a `nil, reason` return, not a raised error.
-        local originalCreateSync = BaseItemCategory.createSync
-        BaseItemCategory.createSync = function() error('simulated DB failure') end
+        local originalCreateSync = BaseItemCategory.create
+        BaseItemCategory.create = function() error('simulated DB failure') end
         local id, reason = ItemService.createCategory({ name = 'Weapons' })
-        BaseItemCategory.createSync = originalCreateSync
+        BaseItemCategory.create = originalCreateSync
         eq(id, nil)
         truthy(reason ~= nil, 'expected a reason string instead of a thrown error')
     end)
