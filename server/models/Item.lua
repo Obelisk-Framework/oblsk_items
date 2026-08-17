@@ -26,7 +26,7 @@ end
 --- type depletes (step_key set), in which case it scales by how much of
 --- data[step_key] remains versus the base item's starting capacity.
 --- Assumes self.baseItem has already been set directly (assign it yourself
---- after loading/constructing the BaseItem; :loadSync('baseItemRelation')
+--- after loading/constructing the BaseItem; :load('baseItemRelation')
 --- populates self.relations.baseItemRelation, not self.baseItem, so it does
 --- not satisfy this requirement). This method does not lazily load the
 --- relation itself, callers control when that query happens.

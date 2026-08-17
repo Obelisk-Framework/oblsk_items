@@ -37,7 +37,7 @@ local function withStubs(opts, fn)
     local executeCalls = {}
 
     BaseItem = {}
-    function BaseItem:findSync(id)
+    function BaseItem:find(id)
         return opts.baseItemsById[id]
     end
 

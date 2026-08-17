@@ -31,7 +31,7 @@ function ItemService.consumeStep(item, baseItem)
     item.attributes.data = item.attributes.data or {}
     local current = item.attributes.data[key] or 0
     item.attributes.data[key] = math.max(0, current - baseItem.attributes.step)
-    item:saveSync()
+    item:save()
 end
 
 --- Run a BaseItem's use pipeline for a given Item instance. Does nothing if
@@ -46,7 +46,7 @@ end
 ---   entry as before (the generic "Use" fallback for items without
 ---   per-action UI yet)
 function ItemService.use(player, item, onlyActionDbId)
-    local baseItem = BaseItem:findSync(item.attributes.base_item_id)
+    local baseItem = BaseItem:find(item.attributes.base_item_id)
     if not baseItem or not isTruthyFlag(baseItem.attributes.is_useable) then return end
 
     item.baseItem = baseItem
@@ -79,7 +79,7 @@ local function ownedAmount(source, baseItem)
         :where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
-        :getSync()
+        :get()
 
     local total = 0
     for _, row in ipairs(rows) do
@@ -127,7 +127,7 @@ function ItemService.add(source, baseItem, amount, data, forceNewStack)
         :where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
-        :firstSync()
+        :first()
 
     if existing then
         QueryBuilder.new('items'):where('id', existing.id):update({
@@ -177,7 +177,7 @@ function ItemService.remove(source, baseItem, amount)
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
         :orderBy('id', 'asc')
-        :getSync()
+        :get()
 
     local remaining = amount
     for _, row in ipairs(rows) do
@@ -224,14 +224,14 @@ local function totalCarriedWeight(characterId)
     local baseItemsById = {}
     local function base(id)
         if baseItemsById[id] == nil then
-            baseItemsById[id] = QueryBuilder.new('base_items'):where('id', id):firstSync() or false
+            baseItemsById[id] = QueryBuilder.new('base_items'):where('id', id):first() or false
         end
         return baseItemsById[id] or nil
     end
 
     local total = 0
     local function sumOwnedBy(ownerType, ownerId)
-        local rows = QueryBuilder.new('items'):where('owner_type', ownerType):where('owner_id', ownerId):getSync()
+        local rows = QueryBuilder.new('items'):where('owner_type', ownerType):where('owner_id', ownerId):get()
         for _, row in ipairs(rows) do
             local b = base(row.base_item_id)
             if b then
@@ -265,9 +265,9 @@ function ItemService.hasCapacity(source, baseItem, amount, forceNewStack)
         :where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
-        :firstSync()
+        :first()
 
-    local currentSlots = #QueryBuilder.new('items'):where('owner_type', 'character'):where('owner_id', characterId):getSync()
+    local currentSlots = #QueryBuilder.new('items'):where('owner_type', 'character'):where('owner_id', characterId):get()
     local projectedSlots = currentSlots + (existing and 0 or 1)
     if projectedSlots > ItemService.MaxSlots then
         return false, 'Not enough inventory space'
@@ -318,13 +318,13 @@ function ItemService.binding(key)
         return nil
     end
 
-    local row = QueryBuilder.new('item_bindings'):where('key', key):firstSync()
+    local row = QueryBuilder.new('item_bindings'):where('key', key):first()
     if not row then
         resolved[key] = false
         return nil
     end
 
-    local base = BaseItem:findSync(row.base_item_id)
+    local base = BaseItem:find(row.base_item_id)
     if not base then
         print('[ItemService] ERROR: binding "' .. key .. '" points at missing item #' .. tostring(row.base_item_id))
         resolved[key] = false
@@ -372,7 +372,7 @@ end
 --- @param key string
 --- @param baseItemId number
 local function upsertBinding(key, baseItemId)
-    local existingBinding = QueryBuilder.new('item_bindings'):where('key', key):firstSync()
+    local existingBinding = QueryBuilder.new('item_bindings'):where('key', key):first()
     if existingBinding then
         QueryBuilder.new('item_bindings'):where('id', existingBinding.id):update({
             base_item_id = baseItemId,
@@ -391,10 +391,10 @@ end
 --- @return table[] every item_bindings row, each with its base_item_id and
 ---   (when the bound item still exists) the bound item's name
 function ItemService.listBindings()
-    local rows = QueryBuilder.new('item_bindings'):getSync()
+    local rows = QueryBuilder.new('item_bindings'):get()
     local out = {}
     for _, row in ipairs(rows) do
-        local base = QueryBuilder.new('base_items'):where('id', row.base_item_id):firstSync()
+        local base = QueryBuilder.new('base_items'):where('id', row.base_item_id):first()
         table.insert(out, {
             id = row.id,
             key = row.key,
@@ -426,7 +426,7 @@ end
 
 --- @return table[] every base_items row
 function ItemService.listBaseItems()
-    return QueryBuilder.new('base_items'):getSync()
+    return QueryBuilder.new('base_items'):get()
 end
 
 --- Whitelist-updates an existing base item. `name` and the `data`/`actions`
@@ -455,7 +455,7 @@ function ItemService.updateBaseItem(baseItemId, attributes)
     -- force is_giveable true too, regardless of what was separately passed.
     local resolvedTakeable = update.is_takeable
     if resolvedTakeable == nil then
-        local existing = QueryBuilder.new('base_items'):where('id', baseItemId):firstSync()
+        local existing = QueryBuilder.new('base_items'):where('id', baseItemId):first()
         resolvedTakeable = existing and existing.is_takeable
     end
     if isTruthyFlag(resolvedTakeable) then
@@ -493,7 +493,7 @@ function ItemService.createBaseItem(attributes, bindingKey)
         attributes.is_giveable = true
     end
 
-    local ok, result = pcall(function() return BaseItem:createSync(attributes) end)
+    local ok, result = pcall(function() return BaseItem:create(attributes) end)
     if not ok then
         return nil, 'Name already in use'
     end
@@ -511,7 +511,7 @@ end
 --- @param amount number
 --- @return boolean, string|nil reason
 function ItemService.giveToPlayer(source, baseItemId, amount)
-    local base = BaseItem:findSync(baseItemId)
+    local base = BaseItem:find(baseItemId)
     if not base then
         return false, 'Item not found'
     end
@@ -521,7 +521,7 @@ end
 --- @return table[] every registered action (the `actions` table), for the
 ---   admin panel's action picker
 function ItemService.listAvailableActions()
-    return QueryBuilder.new('actions'):getSync()
+    return QueryBuilder.new('actions'):get()
 end
 
 --- Whitelist-replaces a base item's `actions` pipeline (the json column
@@ -536,7 +536,7 @@ end
 function ItemService.setBaseItemActions(baseItemId, actions)
     local valid = {}
     for _, entry in ipairs(actions or {}) do
-        local exists = QueryBuilder.new('actions'):where('id', entry.action_id):firstSync()
+        local exists = QueryBuilder.new('actions'):where('id', entry.action_id):first()
         if exists then
             table.insert(valid, { action_id = entry.action_id, data = entry.data or {} })
         else
