@@ -557,7 +557,7 @@ end
 --- @return table[] every registered action (the `actions` table), for the
 ---   admin panel's action picker
 function ItemService.listAvailableActions()
-    return QueryBuilder.new('actions'):get() -- no Action model yet
+    return Action:all()
 end
 
 --- Whitelist-replaces a base item's `actions` pipeline (the json column
@@ -572,7 +572,7 @@ end
 function ItemService.setBaseItemActions(baseItemId, actions)
     local valid = {}
     for _, entry in ipairs(actions or {}) do
-        local exists = QueryBuilder.new('actions'):where('id', entry.action_id):first() -- no Action model yet
+        local exists = Action:find(entry.action_id)
         if exists then
             table.insert(valid, { action_id = entry.action_id, data = entry.data or {} })
         else

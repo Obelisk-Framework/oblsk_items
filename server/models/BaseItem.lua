@@ -23,7 +23,7 @@ BaseItem.casts = {
 }
 
 function BaseItem:category()
-    return self:belongsTo(ItemCategory, 'item_category_id')
+    return self:belongsTo(BaseItemCategory, 'base_item_category_id')
 end
 
 return BaseItem
