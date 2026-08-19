@@ -25,12 +25,12 @@ end
 --- @param item table Item instance
 --- @param baseItem table BaseItem instance
 function ItemService.consumeStep(item, baseItem)
-    local key = baseItem.attributes.step_key
-    if not (key and baseItem.attributes.step) then return end
+    local key = baseItem.step_key
+    if not (key and baseItem.step) then return end
 
-    item.attributes.data = item.attributes.data or {}
-    local current = item.attributes.data[key] or 0
-    item.attributes.data[key] = math.max(0, current - baseItem.attributes.step)
+    item.data = item.data or {}
+    local current = item.data[key] or 0
+    item.data[key] = math.max(0, current - baseItem.step)
     item:save()
 end
 
@@ -46,12 +46,12 @@ end
 ---   entry as before (the generic "Use" fallback for items without
 ---   per-action UI yet)
 function ItemService.use(player, item, onlyActionDbId)
-    local baseItem = BaseItem:find(item.attributes.base_item_id)
-    if not baseItem or not isTruthyFlag(baseItem.attributes.is_useable) then return end
+    local baseItem = BaseItem:find(item.base_item_id)
+    if not baseItem or not isTruthyFlag(baseItem.is_useable) then return end
 
     item.baseItem = baseItem
 
-    for _, entry in ipairs(baseItem.attributes.actions or {}) do
+    for _, entry in ipairs(baseItem.actions or {}) do
         if onlyActionDbId == nil or entry.action_id == onlyActionDbId then
             local actionId = ActionService.resolveDbId(entry.action_id)
             if actionId then
@@ -60,7 +60,7 @@ function ItemService.use(player, item, onlyActionDbId)
                 data.baseItem = baseItem
                 ActionService.execute(player, actionId, data)
             else
-                print('[ItemService] WARNING: base_item #' .. baseItem.attributes.id .. ' references unknown action db id ' .. tostring(entry.action_id) .. ', skipping')
+                print('[ItemService] WARNING: base_item #' .. baseItem.id .. ' references unknown action db id ' .. tostring(entry.action_id) .. ', skipping')
             end
         end
     end
@@ -75,8 +75,7 @@ local function ownedAmount(source, baseItem)
     local characterId = CharacterService.getActiveCharacterId(source)
     if not characterId then return 0 end
 
-    local rows = QueryBuilder.new('items')
-        :where('owner_type', 'character')
+    local rows = Item:where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
         :get()
@@ -123,19 +122,18 @@ function ItemService.add(source, baseItem, amount, data, forceNewStack)
         return false, 'No active character'
     end
 
-    local existing = not forceNewStack and QueryBuilder.new('items')
-        :where('owner_type', 'character')
+    local existing = not forceNewStack and Item:where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
         :first()
 
     if existing then
-        QueryBuilder.new('items'):where('id', existing.id):update({
+        existing:update({
             amount = existing.amount + amount,
             updated_at = Database.now(),
         })
     else
-        QueryBuilder.new('items'):insert({
+        Item:create({
             base_item_id = baseItem.id,
             owner_type = 'character',
             owner_id = characterId,
@@ -172,8 +170,7 @@ function ItemService.remove(source, baseItem, amount)
         return false, 'Not enough items'
     end
 
-    local rows = QueryBuilder.new('items')
-        :where('owner_type', 'character')
+    local rows = Item:where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
         :orderBy('id', 'asc')
@@ -186,9 +183,9 @@ function ItemService.remove(source, baseItem, amount)
         remaining = remaining - take
         local newAmount = row.amount - take
         if newAmount <= 0 then
-            QueryBuilder.new('items'):where('id', row.id):delete()
+            row:delete()
         else
-            QueryBuilder.new('items'):where('id', row.id):update({
+            row:update({
                 amount = newAmount,
                 updated_at = Database.now(),
             })
@@ -224,14 +221,14 @@ local function totalCarriedWeight(characterId)
     local baseItemsById = {}
     local function base(id)
         if baseItemsById[id] == nil then
-            baseItemsById[id] = QueryBuilder.new('base_items'):where('id', id):first() or false
+            baseItemsById[id] = BaseItem:find(id) or false
         end
         return baseItemsById[id] or nil
     end
 
     local total = 0
     local function sumOwnedBy(ownerType, ownerId)
-        local rows = QueryBuilder.new('items'):where('owner_type', ownerType):where('owner_id', ownerId):get()
+        local rows = Item:where('owner_type', ownerType):where('owner_id', ownerId):get()
         for _, row in ipairs(rows) do
             local b = base(row.base_item_id)
             if b then
@@ -261,13 +258,12 @@ function ItemService.hasCapacity(source, baseItem, amount, forceNewStack)
         return false, 'No active character'
     end
 
-    local existing = not forceNewStack and QueryBuilder.new('items')
-        :where('owner_type', 'character')
+    local existing = not forceNewStack and Item:where('owner_type', 'character')
         :where('owner_id', characterId)
         :where('base_item_id', baseItem.id)
         :first()
 
-    local currentSlots = #QueryBuilder.new('items'):where('owner_type', 'character'):where('owner_id', characterId):get()
+    local currentSlots = #Item:where('owner_type', 'character'):where('owner_id', characterId):get()
     local projectedSlots = currentSlots + (existing and 0 or 1)
     if projectedSlots > ItemService.MaxSlots then
         return false, 'Not enough inventory space'
@@ -318,7 +314,7 @@ function ItemService.binding(key)
         return nil
     end
 
-    local row = QueryBuilder.new('item_bindings'):where('key', key):first()
+    local row = ItemBinding:where('key', key):first()
     if not row then
         resolved[key] = false
         return nil
@@ -331,8 +327,8 @@ function ItemService.binding(key)
         return nil
     end
 
-    resolved[key] = base.attributes
-    return base.attributes
+    resolved[key] = base
+    return base
 end
 
 --- @param key string
@@ -372,14 +368,14 @@ end
 --- @param key string
 --- @param baseItemId number
 local function upsertBinding(key, baseItemId)
-    local existingBinding = QueryBuilder.new('item_bindings'):where('key', key):first()
+    local existingBinding = ItemBinding:where('key', key):first()
     if existingBinding then
-        QueryBuilder.new('item_bindings'):where('id', existingBinding.id):update({
+        existingBinding:update({
             base_item_id = baseItemId,
             updated_at = Database.now(),
         })
     else
-        QueryBuilder.new('item_bindings'):insert({
+        ItemBinding:create({
             key = key,
             base_item_id = baseItemId,
             updated_at = Database.now(),
@@ -391,10 +387,10 @@ end
 --- @return table[] every item_bindings row, each with its base_item_id and
 ---   (when the bound item still exists) the bound item's name
 function ItemService.listBindings()
-    local rows = QueryBuilder.new('item_bindings'):get()
+    local rows = ItemBinding:all()
     local out = {}
     for _, row in ipairs(rows) do
-        local base = QueryBuilder.new('base_items'):where('id', row.base_item_id):first()
+        local base = BaseItem:find(row.base_item_id)
         table.insert(out, {
             id = row.id,
             key = row.key,
@@ -419,14 +415,14 @@ end
 --- @param key string
 --- @return boolean
 function ItemService.clearBinding(key)
-    QueryBuilder.new('item_bindings'):where('key', key):delete()
+    ItemBinding:where('key', key):delete()
     resolved[key] = nil
     return true
 end
 
 --- @return table[] every base_items row
 function ItemService.listBaseItems()
-    return QueryBuilder.new('base_items'):get()
+    return BaseItem:all()
 end
 
 --- Whitelist-updates an existing base item. `name` and the `data`/`actions`
@@ -456,14 +452,14 @@ function ItemService.updateBaseItem(baseItemId, attributes)
     -- force is_giveable true too, regardless of what was separately passed.
     local resolvedTakeable = update.is_takeable
     if resolvedTakeable == nil then
-        local existing = QueryBuilder.new('base_items'):where('id', baseItemId):first()
+        local existing = BaseItem:find(baseItemId)
         resolvedTakeable = existing and existing.is_takeable
     end
     if isTruthyFlag(resolvedTakeable) then
         update.is_giveable = true
     end
 
-    QueryBuilder.new('base_items'):where('id', baseItemId):update(update)
+    BaseItem:find(baseItemId):update(update)
 
     for key, value in pairs(resolved) do
         if value and value.id == baseItemId then
@@ -533,18 +529,11 @@ function ItemService.createBaseItem(attributes, bindingKey)
     if not attributes.name or attributes.name == '' then
         return nil, 'Name is required'
     end
-
-    -- "Can be taken" always implies "Can be traded" — see updateBaseItem's
-    -- matching enforcement.
-    if isTruthyFlag(attributes.is_takeable) then
-        attributes.is_giveable = true
-    end
-
     local ok, result = pcall(function() return BaseItem:create(attributes) end)
     if not ok then
         return nil, 'Name already in use'
     end
-    local id = result.attributes.id
+    local id = result.id
 
     if bindingKey then
         upsertBinding(bindingKey, id)
@@ -562,13 +551,13 @@ function ItemService.giveToPlayer(source, baseItemId, amount)
     if not base then
         return false, 'Item not found'
     end
-    return ItemService.add(source, base.attributes, amount)
+    return ItemService.add(source, base, amount)
 end
 
 --- @return table[] every registered action (the `actions` table), for the
 ---   admin panel's action picker
 function ItemService.listAvailableActions()
-    return QueryBuilder.new('actions'):get()
+    return Action:all()
 end
 
 --- Whitelist-replaces a base item's `actions` pipeline (the json column
@@ -583,14 +572,14 @@ end
 function ItemService.setBaseItemActions(baseItemId, actions)
     local valid = {}
     for _, entry in ipairs(actions or {}) do
-        local exists = QueryBuilder.new('actions'):where('id', entry.action_id):first()
+        local exists = Action:find(entry.action_id)
         if exists then
             table.insert(valid, { action_id = entry.action_id, data = entry.data or {} })
         else
             print('[ItemService] WARNING: setBaseItemActions: skipping unknown action db id ' .. tostring(entry.action_id))
         end
     end
-    QueryBuilder.new('base_items'):where('id', baseItemId):update({ actions = valid })
+    BaseItem:where('id', baseItemId):update({ actions = valid })
     return true
 end
 

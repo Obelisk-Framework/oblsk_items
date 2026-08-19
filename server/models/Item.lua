@@ -33,13 +33,13 @@ end
 --- @return number
 function Item:getWeight()
     local baseItem = self.baseItem
-    local key = baseItem.attributes.step_key
-    local itemData = self.attributes.data or {}
-    local baseData = baseItem.attributes.data or {}
-    if key and baseItem.attributes.step and itemData[key] and baseData[key] then
-        return baseItem.attributes.weight * (itemData[key] / baseData[key])
+    local key = baseItem.step_key
+    local itemData = self.data or {}
+    local baseData = baseItem.data or {}
+    if key and baseItem.step and itemData[key] and baseData[key] then
+        return baseItem.weight * (itemData[key] / baseData[key])
     end
-    return baseItem.attributes.weight
+    return baseItem.weight
 end
 
 --- Whether two Item instances are eligible to merge into one stacked row:
@@ -50,10 +50,10 @@ end
 --- @param b table Item instance
 --- @return boolean
 function Item.isStackableWith(a, b)
-    if a.attributes.base_item_id ~= b.attributes.base_item_id then return false end
-    if a.attributes.owner_type ~= b.attributes.owner_type then return false end
-    if a.attributes.owner_id ~= b.attributes.owner_id then return false end
-    return json.encode(a.attributes.data) == json.encode(b.attributes.data)
+    if a.base_item_id ~= b.base_item_id then return false end
+    if a.owner_type ~= b.owner_type then return false end
+    if a.owner_id ~= b.owner_id then return false end
+    return json.encode(a.data) == json.encode(b.data)
 end
 
 return Item
