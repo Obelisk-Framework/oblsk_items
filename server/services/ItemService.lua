@@ -437,6 +437,7 @@ local EDITABLE_BASE_ITEM_FIELDS = {
     'description', 'icon', 'weight',
     'is_takeable', 'is_giveable', 'is_dropable', 'is_container', 'is_useable', 'is_stackable',
     'max_stack_amount',
+    'base_item_category_id', 'is_kept_after_respawn',
 }
 function ItemService.updateBaseItem(baseItemId, attributes)
     local update = {}
@@ -458,7 +459,7 @@ function ItemService.updateBaseItem(baseItemId, attributes)
         update.is_giveable = true
     end
 
-    BaseItem:where('id', baseItemId):update(update)
+    BaseItem:find(baseItemId):update(update)
 
     for key, value in pairs(resolved) do
         if value and value.id == baseItemId then
@@ -467,6 +468,52 @@ function ItemService.updateBaseItem(baseItemId, attributes)
     end
 
     return true
+end
+
+--- Merges only the base item's category's schema-declared field names
+--- into its existing `data` JSON — every other existing `data` key is left
+--- untouched. `updateBaseItem`'s own `data` exclusion is unaffected: this
+--- is a separate, narrowly-scoped path for category-schema fields only.
+--- @param baseItemId number
+--- @param values table { [fieldName] = value, ... } — keys not declared by
+---   the item's category schema are silently ignored
+--- @return boolean ok false only if at least one required field resolved empty
+--- @return string[] errors one entry per rejected required-but-empty field
+function ItemService.updateBaseItemCategoryData(baseItemId, values)
+    local baseItem = BaseItem:find(baseItemId)
+    if not baseItem then
+        return true, {}
+    end
+
+    local categoryId = baseItem.base_item_category_id
+    if not categoryId then
+        return true, {}
+    end
+
+    local category = BaseItemCategory:find(categoryId)
+    local fields = (category and category.fields) or {}
+    if #fields == 0 then
+        return true, {}
+    end
+
+    local errors = {}
+    local merged = {}
+    local existing = baseItem.data or {}
+    for k, v in pairs(existing) do merged[k] = v end
+
+    for _, field in ipairs(fields) do
+        local value = values[field.name]
+        local isEmpty = value == nil or value == ''
+        if field.required and isEmpty then
+            table.insert(errors, field.name .. ' is required')
+        else
+            merged[field.name] = value
+        end
+    end
+
+    baseItem:update({ data = merged })
+
+    return #errors == 0, errors
 end
 
 --- @param attributes table see BaseItem.fillable for accepted keys

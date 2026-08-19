@@ -69,6 +69,15 @@ test('updateBaseItem: updates whitelisted fields only', function()
     end)
 end)
 
+test('updateBaseItem: a Database.NULL-tagged field clears the column to SQL NULL', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5, base_item_category_id = 7 } }
+        local ok = ItemService.updateBaseItem(1, { base_item_category_id = Database.NULL })
+        truthy(ok)
+        eq(tables.base_items[1].base_item_category_id, nil, 'category should be cleared, not skipped')
+    end)
+end)
+
 test('updateBaseItem: invalidates the binding resolve cache', function()
     withFakeDb(function(tables)
         ItemService.resetBindingCacheForTests()
@@ -87,6 +96,34 @@ test('updateBaseItem: invalidates the binding resolve cache', function()
         eq(after.weight, 0.9, 'binding() must re-resolve after updateBaseItem invalidates the cache')
 
         ItemService.resetBindingCacheForTests()
+    end)
+end)
+
+test('updateBaseItem: is_takeable=true forces is_giveable=true even if is_giveable was separately passed false', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5, is_takeable = 0, is_giveable = 0 } }
+        local ok = ItemService.updateBaseItem(1, { is_takeable = 1, is_giveable = 0 })
+        truthy(ok)
+        eq(tables.base_items[1].is_takeable, 1)
+        eq(tables.base_items[1].is_giveable, true, 'is_takeable=true must force is_giveable true regardless of what was passed')
+    end)
+end)
+
+test('updateBaseItem: is_takeable already true on the existing row forces is_giveable true even when not itself being changed', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5, is_takeable = 1, is_giveable = 0 } }
+        local ok = ItemService.updateBaseItem(1, { is_giveable = 0, weight = 0.9 })
+        truthy(ok)
+        eq(tables.base_items[1].is_giveable, true)
+    end)
+end)
+
+test('updateBaseItem: is_takeable false leaves is_giveable exactly as passed', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', weight = 0.5, is_takeable = 0, is_giveable = 1 } }
+        local ok = ItemService.updateBaseItem(1, { is_giveable = 0 })
+        truthy(ok)
+        eq(tables.base_items[1].is_giveable, 0)
     end)
 end)
 
@@ -133,6 +170,14 @@ test('createBaseItem: without a bindingKey, leaves item_bindings untouched', fun
     end)
 end)
 
+test('createBaseItem: is_takeable=true forces is_giveable=true', function()
+    withFakeDb(function(tables)
+        local id = ItemService.createBaseItem({ name = 'wallet', weight = 0.1, is_takeable = true, is_giveable = false })
+        truthy(id ~= nil)
+        eq(tables.base_items[1].is_giveable, true)
+    end)
+end)
+
 --------------------------------------------------------------------------------
 -- giveToPlayer
 --------------------------------------------------------------------------------
@@ -153,6 +198,58 @@ test('giveToPlayer: fails with a reason when the base item does not exist', func
         local ok, reason = ItemService.giveToPlayer(42, 999, 1)
         eq(ok, false)
         truthy(reason ~= nil)
+    end)
+end)
+
+--------------------------------------------------------------------------------
+-- listAvailableActions
+--------------------------------------------------------------------------------
+
+test('listAvailableActions: returns every actions row', function()
+    withFakeDb(function(tables)
+        tables.actions = { { id = 1, action_id = 'item:notify', label = 'Notify' }, { id = 2, action_id = 'item:consume_step', label = 'Consume' } }
+        local actions = ItemService.listAvailableActions()
+        eq(#actions, 2)
+    end)
+end)
+
+--------------------------------------------------------------------------------
+-- setBaseItemActions
+--------------------------------------------------------------------------------
+
+test('setBaseItemActions: writes the full replacement array of valid entries', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', actions = {} } }
+        tables.actions = { { id = 5, action_id = 'item:notify', label = 'Notify' } }
+        local ok = ItemService.setBaseItemActions(1, { { action_id = 5, data = { foo = 'bar' } } })
+        truthy(ok)
+        eq(#tables.base_items[1].actions, 1)
+        eq(tables.base_items[1].actions[1].action_id, 5)
+        eq(tables.base_items[1].actions[1].data.foo, 'bar')
+    end)
+end)
+
+test('setBaseItemActions: skips entries referencing an unknown action_id', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', actions = {} } }
+        tables.actions = { { id = 5, action_id = 'item:notify', label = 'Notify' } }
+        local ok = ItemService.setBaseItemActions(1, {
+            { action_id = 5, data = {} },
+            { action_id = 999, data = {} },
+        })
+        truthy(ok)
+        eq(#tables.base_items[1].actions, 1, 'the unknown action_id entry must be skipped')
+        eq(tables.base_items[1].actions[1].action_id, 5)
+    end)
+end)
+
+test('setBaseItemActions: empty array clears existing actions', function()
+    withFakeDb(function(tables)
+        tables.base_items = { { id = 1, name = 'water', actions = { { action_id = 5, data = {} } } } }
+        tables.actions = { { id = 5, action_id = 'item:notify', label = 'Notify' } }
+        local ok = ItemService.setBaseItemActions(1, {})
+        truthy(ok)
+        eq(#tables.base_items[1].actions, 0)
     end)
 end)
 
