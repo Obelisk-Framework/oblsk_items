@@ -20,6 +20,7 @@ dofile(CORE_ROOT .. '/core/server/ORM/Database.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/QueryBuilder.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/Schema.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/BaseModel.lua')
+dofile(CORE_ROOT .. '/core/server/Traits/HasItems.lua')
 dofile(scriptDir .. '../server/models/BaseItem.lua')
 dofile(scriptDir .. '../server/models/Item.lua')
 
@@ -74,6 +75,21 @@ test('Item.isStackableWith: different owner is not stackable even with identical
     local a = Item.new({ base_item_id = 1, owner_type = 'character', owner_id = 1, data = {} })
     local b = Item.new({ base_item_id = 1, owner_type = 'character', owner_id = 2, data = {} })
     eq(Item.isStackableWith(a, b), false)
+end)
+
+test('HasItems identifies an Item owner with the configured type and id', function()
+    local item = Item.new({ id = 42 })
+    item.exists = true
+    local owner = item:itemOwner()
+    truthy(owner)
+    eq(owner.type, 'item')
+    eq(owner.id, 42)
+end)
+
+test('HasItems rejects unsaved Item owners', function()
+    local owner, reason = Item.new({ id = 42 }):itemOwner()
+    eq(owner, nil)
+    eq(reason, 'Item owner must be persisted')
 end)
 
 --------------------------------------------------------------------------------

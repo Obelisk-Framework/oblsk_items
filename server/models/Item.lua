@@ -18,6 +18,8 @@ Item.casts = {
     data = 'json',
 }
 
+HasItems.apply(Item, 'item')
+
 function Item:baseItemRelation()
     return self:belongsTo(BaseItem, 'base_item_id', 'id')
 end

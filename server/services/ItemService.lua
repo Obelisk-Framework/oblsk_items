@@ -66,17 +66,43 @@ function ItemService.use(player, item, onlyActionDbId)
     end
 end
 
---- Total amount of `baseItem` the character behind `source` owns, summed across
---- every stack.
---- @param source number
+--- Resolve a persisted HasItems model, while keeping the source-number form
+--- working for existing character callers.
+--- @param target table|number
+--- @return table|nil identity { type = string, id = any }
+--- @return string|nil reason
+local function resolveOwner(target)
+    if type(target) == 'number' then
+        if type(CharacterService) ~= 'table' or type(CharacterService.getActiveCharacterId) ~= 'function' then
+            return nil, 'Character module is not installed'
+        end
+
+        local characterId = CharacterService.getActiveCharacterId(target)
+        if not characterId then return nil, 'No active character' end
+        return { type = 'character', id = characterId }
+    end
+
+    if type(target) ~= 'table' or type(target.itemOwner) ~= 'function' then
+        return nil, 'Target must implement HasItems'
+    end
+
+    local owner, reason = target:itemOwner()
+    if type(owner) ~= 'table' or type(owner.type) ~= 'string' or owner.type == '' or owner.id == nil then
+        return nil, reason or 'Invalid item owner'
+    end
+
+    return owner
+end
+
+--- Total amount of `baseItem` owned by this item owner, summed across stacks.
+--- @param owner table { type = string, id = any }
 --- @param baseItem table base_items row
 --- @return number
-local function ownedAmount(source, baseItem)
-    local characterId = CharacterService.getActiveCharacterId(source)
-    if not characterId then return 0 end
+local function ownedAmount(owner, baseItem)
+    if not owner then return 0 end
 
-    local rows = Item:where('owner_type', 'character')
-        :where('owner_id', characterId)
+    local rows = Item:where('owner_type', owner.type)
+        :where('owner_id', owner.id)
         :where('base_item_id', baseItem.id)
         :get()
 
@@ -87,19 +113,19 @@ local function ownedAmount(source, baseItem)
     return total
 end
 
---- @param source number
+--- @param target number|table legacy player source or persisted HasItems model
 --- @param baseItem table base_items row
 --- @param amount number
---- @return boolean true if the character owns at least `amount` of `baseItem`
-function ItemService.has(source, baseItem, amount)
-    return ownedAmount(source, baseItem) >= amount
+--- @return boolean true if the owner has at least `amount` of `baseItem`
+function ItemService.has(target, baseItem, amount)
+    return ownedAmount(resolveOwner(target), baseItem) >= amount
 end
 
---- Merges `amount` into the character's existing stack of `baseItem` if one
+--- Merges `amount` into the owner's existing stack of `baseItem` if one
 --- exists, otherwise creates a new stack row. Does not split across
 --- `max_stack_amount` — see the module-level note on this function's known
 --- limitation (fine for currency-shaped items, not a general stacker).
---- @param source number
+--- @param target number|table player source or persisted HasItems model
 --- @param baseItem table base_items row
 --- @param amount number
 --- @param data table|nil per-instance data merged onto the stack row (new
@@ -112,18 +138,16 @@ end
 ---   (e.g. clothing variants sharing one base_item_id) and must never be
 ---   silently merged into an existing stack
 --- @return boolean, string|nil reason
-function ItemService.add(source, baseItem, amount, data, forceNewStack)
+function ItemService.add(target, baseItem, amount, data, forceNewStack)
     if type(amount) ~= 'number' or amount <= 0 then
         return false, 'Invalid amount'
     end
 
-    local characterId = CharacterService.getActiveCharacterId(source)
-    if not characterId then
-        return false, 'No active character'
-    end
+    local owner, reason = resolveOwner(target)
+    if not owner then return false, reason end
 
-    local existing = not forceNewStack and Item:where('owner_type', 'character')
-        :where('owner_id', characterId)
+    local existing = not forceNewStack and Item:where('owner_type', owner.type)
+        :where('owner_id', owner.id)
         :where('base_item_id', baseItem.id)
         :first()
 
@@ -135,8 +159,8 @@ function ItemService.add(source, baseItem, amount, data, forceNewStack)
     else
         Item:create({
             base_item_id = baseItem.id,
-            owner_type = 'character',
-            owner_id = characterId,
+            owner_type = owner.type,
+            owner_id = owner.id,
             amount = amount,
             data = data or {},
             created_at = Database.now(),
@@ -147,31 +171,29 @@ function ItemService.add(source, baseItem, amount, data, forceNewStack)
     return true
 end
 
---- Spends `amount` of `baseItem` from the character's stacks, oldest row
---- first, deleting any stack that reaches zero. Fails (no mutation at all) if
---- the character doesn't own enough — callers must check `ItemService.has`
+--- Spends `amount` of `baseItem` from the owner's stacks, oldest row first,
+--- deleting any stack that reaches zero. Fails (no mutation at all) if the
+--- owner doesn't have enough — callers may check `ItemService.has`
 --- first if they need to distinguish "not enough" from other failures, but
 --- this also self-checks so it's safe to call directly.
---- @param source number
+--- @param target number|table player source or persisted HasItems model
 --- @param baseItem table base_items row
 --- @param amount number
 --- @return boolean, string|nil reason
-function ItemService.remove(source, baseItem, amount)
+function ItemService.remove(target, baseItem, amount)
     if type(amount) ~= 'number' or amount <= 0 then
         return false, 'Invalid amount'
     end
 
-    local characterId = CharacterService.getActiveCharacterId(source)
-    if not characterId then
-        return false, 'No active character'
-    end
+    local owner, reason = resolveOwner(target)
+    if not owner then return false, reason end
 
-    if not ItemService.has(source, baseItem, amount) then
+    if not ItemService.has(target, baseItem, amount) then
         return false, 'Not enough items'
     end
 
-    local rows = Item:where('owner_type', 'character')
-        :where('owner_id', characterId)
+    local rows = Item:where('owner_type', owner.type)
+        :where('owner_id', owner.id)
         :where('base_item_id', baseItem.id)
         :orderBy('id', 'asc')
         :get()
@@ -242,34 +264,32 @@ local function totalCarriedWeight(characterId)
     return total
 end
 
---- Whether granting `amount` of `baseItem` to `source`'s active character
---- would exceed ItemService.MaxSlots or ItemService.MaxWeight. Mirrors the
---- same existing-stack lookup ItemService.add itself does, so the
---- projection matches what add() will actually do.
---- @param source number
+--- Whether granting `amount` of `baseItem` to a character owner would exceed
+--- ItemService.MaxSlots or ItemService.MaxWeight. Other owner types have no
+--- generic capacity rules here; inventory modules own those constraints.
+--- @param target number|table player source or persisted HasItems model
 --- @param baseItem table base_items row
 --- @param amount number
 --- @param forceNewStack boolean|nil
 --- @return boolean ok
 --- @return string|nil reason
-function ItemService.hasCapacity(source, baseItem, amount, forceNewStack)
-    local characterId = CharacterService.getActiveCharacterId(source)
-    if not characterId then
-        return false, 'No active character'
-    end
+function ItemService.hasCapacity(target, baseItem, amount, forceNewStack)
+    local owner, reason = resolveOwner(target)
+    if not owner then return false, reason end
+    if owner.type ~= 'character' then return true end
 
-    local existing = not forceNewStack and Item:where('owner_type', 'character')
-        :where('owner_id', characterId)
+    local existing = not forceNewStack and Item:where('owner_type', owner.type)
+        :where('owner_id', owner.id)
         :where('base_item_id', baseItem.id)
         :first()
 
-    local currentSlots = #Item:where('owner_type', 'character'):where('owner_id', characterId):get()
+    local currentSlots = #Item:where('owner_type', owner.type):where('owner_id', owner.id):get()
     local projectedSlots = currentSlots + (existing and 0 or 1)
     if projectedSlots > ItemService.MaxSlots then
         return false, 'Not enough inventory space'
     end
 
-    local projectedWeight = totalCarriedWeight(characterId) + unitWeight(baseItem, nil) * amount
+    local projectedWeight = totalCarriedWeight(owner.id) + unitWeight(baseItem, nil) * amount
     if projectedWeight > ItemService.MaxWeight then
         return false, 'Too heavy to carry'
     end
