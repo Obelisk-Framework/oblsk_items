@@ -8,7 +8,6 @@ function HasItems.apply(Model, ownerType)
     assert(type(Model) == 'table', 'HasItems.apply expects a model class')
     assert(type(ownerType) == 'string' and ownerType ~= '', 'HasItems.apply expects a non-empty owner type')
 
-    Model.itemOwnerType = ownerType
     local primaryKey = Model.primaryKey or 'id'
 
     --- @return table|nil identity { type = string, id = any }
@@ -27,13 +26,9 @@ function HasItems.apply(Model, ownerType)
     end
 end
 
--- Models load before services; Characters opts in only when this optional
--- module is installed, while Items remains usable without oblsk_characters.
-if type(Item) == 'table' and Item.itemOwnerType then
-    HasItems.apply(Item, Item.itemOwnerType)
-end
-if type(Character) == 'table' and Character.itemOwnerType then
-    HasItems.apply(Character, Character.itemOwnerType)
+-- Item is a model defined by this module and is loaded before its services.
+if type(Item) == 'table' then
+    HasItems.apply(Item, 'item')
 end
 
 return HasItems

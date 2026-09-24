@@ -11,9 +11,6 @@ dofile(ROOT .. '/core/server/ORM/Schema.lua')
 dofile(ROOT .. '/core/server/ORM/BaseModel.lua')
 
 Item = BaseModel:extend('items')
-Item.itemOwnerType = 'item'
-Character = BaseModel:extend('characters')
-Character.itemOwnerType = 'character'
 local HasItems = dofile(scriptDir .. '../server/services/HasItems.lua')
 
 local Widget = { table = 'renamed_widgets', primaryKey = 'uuid' }
@@ -37,9 +34,9 @@ local missingId, missingIdReason = instance(Widget, { exists = true }):itemOwner
 assert(missingId == nil)
 assert(missingIdReason == 'Item owner has no primary key')
 
-local character, characterReason = instance(Character, { id = 5, exists = true }):itemOwner()
-assert(characterReason == nil)
-assert(character.type == 'character')
-assert(character.id == 5)
+local itemOwner, itemReason = instance(Item, { id = 5, exists = true }):itemOwner()
+assert(itemReason == nil)
+assert(itemOwner.type == 'item')
+assert(itemOwner.id == 5)
 
 print('HasItems contract: 4/4 passed')
