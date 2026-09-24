@@ -20,9 +20,9 @@ dofile(CORE_ROOT .. '/core/server/ORM/Database.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/QueryBuilder.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/Schema.lua')
 dofile(CORE_ROOT .. '/core/server/ORM/BaseModel.lua')
-dofile(CORE_ROOT .. '/core/server/Traits/HasItems.lua')
 dofile(scriptDir .. '../server/models/BaseItem.lua')
 dofile(scriptDir .. '../server/models/Item.lua')
+dofile(scriptDir .. '../server/services/HasItems.lua')
 
 local tests, failures, passed = {}, {}, 0
 local function test(name, fn) tests[#tests + 1] = {name = name, fn = fn} end

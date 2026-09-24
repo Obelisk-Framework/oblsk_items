@@ -6,4 +6,4 @@ See [Item module design](https://github.com/Obelisk-Framework/core/blob/main/doc
 
 ## Item owners
 
-Pass a persisted model implementing `HasItems` to `ItemService.add`, `remove`, or `has`. Models opt in with a stable polymorphic type, for example `HasItems.apply(Character, 'character')`; type is explicit rather than inferred from the database table name. The existing numeric player-source form remains supported for active-character callers.
+Pass a persisted model implementing `itemOwner()` to `ItemService.add`, `remove`, or `has`. The item module supplies this contract for `Item` and, when present, `Character`; each model declares its stable polymorphic `itemOwnerType` explicitly rather than deriving it from a table name. The existing numeric player-source form remains supported for active-character callers.

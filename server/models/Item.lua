@@ -18,7 +18,7 @@ Item.casts = {
     data = 'json',
 }
 
-HasItems.apply(Item, 'item')
+Item.itemOwnerType = 'item'
 
 function Item:baseItemRelation()
     return self:belongsTo(BaseItem, 'base_item_id', 'id')
