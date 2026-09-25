@@ -9,6 +9,13 @@ dofile(ROOT .. '/core/server/ORM/Dialects/MySQL.lua')
 dofile(ROOT .. '/core/server/ORM/Dialects/Postgres.lua')
 dofile(ROOT .. '/core/server/ORM/Database.lua')
 dofile(ROOT .. '/core/server/ORM/QueryBuilder.lua')
+dofile(ROOT .. '/core/server/ORM/Schema.lua')
+dofile(ROOT .. '/core/server/ORM/BaseModel.lua')
+dofile(scriptDir .. '../server/models/BaseItem.lua')
+dofile(scriptDir .. '../server/models/Item.lua')
+dofile(scriptDir .. '../server/services/HasItems.lua')
+local StorageUnit = BaseModel:extend('storage_units')
+HasItems.apply(StorageUnit, 'storage_unit')
 
 local makeFakeQueryBuilderModule = dofile(ROOT .. '/tests/support/fake_query_builder.lua')
 
@@ -69,6 +76,24 @@ test('add: creates a new stack when the character owns none', function()
     end)
 end)
 
+test('add: accepts any persisted HasItems model without the characters module', function()
+    withFreshState({}, function(fake)
+        local characterService = CharacterService
+        CharacterService = nil
+
+        local owner = StorageUnit.new({ id = 900 })
+        owner.exists = true
+        local succeeded, ok, reason = pcall(ItemService.add, owner, CASH, 10)
+
+        CharacterService = characterService
+        if not succeeded then error(ok) end
+        eq(ok, true, reason)
+        local rows = fake.new('items'):where('owner_type', 'storage_unit'):where('owner_id', 900):get()
+        eq(#rows, 1)
+        eq(rows[1].amount, 10)
+    end)
+end)
+
 test('add: merges into an existing stack of the same item', function()
     withFreshState({
         [1] = { id = 1, base_item_id = 1, owner_type = 'character', owner_id = 5, amount = 20 },
@@ -87,7 +112,7 @@ test('add: forceNewStack skips merging and always inserts a new row, each keepin
         local ok2 = ItemService.add(999, CASH, 1, { textureId = 1, colorLabel = 'Black' }, true)
         eq(ok1, true)
         eq(ok2, true)
-        local rows = fake.new('items'):where('owner_type', 'character'):where('owner_id', 5):get()
+        local rows = Item:where('owner_type', 'character'):where('owner_id', 5):get()
         eq(#rows, 2)
         eq(rows[1].amount, 1)
         eq(rows[2].amount, 1)
@@ -95,6 +120,18 @@ test('add: forceNewStack skips merging and always inserts a new row, each keepin
         eq(rows[1].data.colorLabel, 'White')
         eq(rows[2].data.textureId, 1)
         eq(rows[2].data.colorLabel, 'Black')
+    end)
+end)
+
+test('has and remove: use a persisted model owner identity', function()
+    withFreshState({
+        [1] = { id = 1, base_item_id = 1, owner_type = 'item', owner_id = 900, amount = 50 },
+    }, function(fake)
+        local owner = Item.new({ id = 900 })
+        owner.exists = true
+        eq(ItemService.has(owner, CASH, 50), true)
+        eq(ItemService.remove(owner, CASH, 20), true)
+        eq(fake.new('items'):where('id', 1):first().amount, 30)
     end)
 end)
 
