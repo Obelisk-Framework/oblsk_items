@@ -277,6 +277,75 @@ function ItemService.hasCapacity(source, baseItem, amount, forceNewStack)
     return true
 end
 
+local function validAmount(amount)
+    return type(amount) == 'number' and amount > 0 and amount % 1 == 0 and amount < math.huge
+end
+
+--- Queue an inventory debit into a caller-owned transaction.
+--- @param tx table
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @return boolean, string|nil reason
+function ItemService.queueRemove(tx, source, baseItem, amount)
+    if type(tx) ~= 'table' or type(tx.add) ~= 'function' then return false, 'Transaction required' end
+    if not validAmount(amount) then return false, 'Invalid amount' end
+    if type(baseItem) ~= 'table' or not baseItem.id then return false, 'Item not found' end
+
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then return false, 'No active character' end
+
+    local rows = Item:where('owner_type', 'character'):where('owner_id', characterId)
+        :where('base_item_id', baseItem.id):orderBy('id', 'asc'):get()
+    local total = 0
+    for _, row in ipairs(rows) do total = total + (row.amount or 0) end
+    if total < amount then return false, 'Not enough items' end
+
+    local remaining = amount
+    for _, row in ipairs(rows) do
+        if remaining <= 0 then break end
+        local take = math.min(remaining, row.amount)
+        remaining = remaining - take
+        if take == row.amount then
+            tx:add('DELETE FROM items WHERE id = ? AND amount = ?', { row.id, row.amount }, { expectedAffectedRows = 1 })
+        else
+            tx:add('UPDATE items SET amount = amount - ?, updated_at = ? WHERE id = ? AND amount >= ?',
+                { take, Database.now(), row.id, take }, { expectedAffectedRows = 1 })
+        end
+    end
+    return true
+end
+
+--- Queue an inventory credit into a caller-owned transaction.
+--- @param tx table
+--- @param source number
+--- @param baseItem table base_items row
+--- @param amount number
+--- @param data table|nil
+--- @param forceNewStack boolean|nil
+--- @return boolean, string|nil reason
+function ItemService.queueAdd(tx, source, baseItem, amount, data, forceNewStack)
+    if type(tx) ~= 'table' or type(tx.add) ~= 'function' then return false, 'Transaction required' end
+    if not validAmount(amount) then return false, 'Invalid amount' end
+    if type(baseItem) ~= 'table' or not baseItem.id then return false, 'Item not found' end
+
+    local characterId = CharacterService.getActiveCharacterId(source)
+    if not characterId then return false, 'No active character' end
+
+    local existing = not forceNewStack and Item:where('owner_type', 'character')
+        :where('owner_id', characterId):where('base_item_id', baseItem.id):first()
+    local now = Database.now()
+    if existing then
+        tx:add('UPDATE items SET amount = amount + ?, updated_at = ? WHERE id = ?',
+            { amount, now, existing.id }, { expectedAffectedRows = 1 })
+    else
+        tx:add([[INSERT INTO items (base_item_id, owner_type, owner_id, amount, data, created_at, updated_at)
+            VALUES (?, 'character', ?, ?, ?, ?, ?)]],
+            { baseItem.id, characterId, amount, json.encode(data or {}), now, now }, { expectedAffectedRows = 1 })
+    end
+    return true
+end
+
 --- Binding registry: key -> { live = bool, hint = string|nil, uses = { [pluginName] = description|true } }.
 --- Populated by ItemService.registerRequirements, called once per plugin at
 --- boot (core/core/server/bootstrap.lua) with that plugin's
